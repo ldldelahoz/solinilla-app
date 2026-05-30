@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from fastapi import Depends, HTTPException
 
 # 🔐 CONFIGURACIÓN JWT
 SECRET_KEY = "solinilla_secret_2026_cloud_compatible"  # Cambia esto en producción
@@ -45,3 +46,13 @@ def get_current_user(authorization: Optional[str] = None):
     token = authorization.replace("Bearer ", "").strip()
     payload = decode_token(token)
     return payload if payload else None
+
+
+def require_admin(current_user: dict = Depends(get_current_user)):
+    """Verifica que el usuario sea admin."""
+    if not current_user or current_user.get("rol") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Requiere permisos de administrador"
+        )
+    return current_user
