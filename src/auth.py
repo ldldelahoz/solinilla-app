@@ -9,6 +9,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 horas
 
 # 🔐 HASHING: PBKDF2 (compatible con Python 3.13 y Render)
+# Actualizado para cloud - pbkdf2_sha256 - 2026 ⚡
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
