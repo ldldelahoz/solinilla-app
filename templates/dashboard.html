@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Solinilla</title>
+  <style>
+    :root { --primary: #2563eb; --success: #16a34a; --danger: #dc2626; --warning: #f59e0b; --bg: #f3f4f6; --card: #ffffff; --text: #111827; --muted: #6b7280; --border: #e5e7eb; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; }
+    header { background: var(--card); padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 10; }
+    .brand { font-weight: 700; font-size: 1.2rem; }
+    .badge { background: var(--success); color: white; font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 20px; margin-left: 0.5rem; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; color: white; }
+    .btn-print { background: var(--warning); color: #000; }
+    .logout { background: var(--danger); color: white; }
+    main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; overflow-x: auto; }
+    .tab { padding: 0.6rem 1rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; white-space: nowrap; }
+    .tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .panel { display: none; background: var(--card); padding: 1.2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .panel.active { display: block; }
+    form { display: grid; gap: 0.8rem; margin-top: 1rem; }
+    input, select, button, textarea { padding: 0.8rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; }
+    button { background: var(--primary); color: white; cursor: pointer; border: none; font-weight: 500; }
+    button:hover { opacity: 0.9; }
+    button.secondary { background: var(--muted); }
+    button.success { background: var(--success); }
+    button.danger { background: var(--danger); }
+    button.warning { background: var(--warning); color: #000; }
+    
+    .search-box { position: relative; }
+    .search-results { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border); border-radius: 8px; max-height: 250px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .search-results.show { display: block; }
+    .search-item { padding: 0.7rem 1rem; cursor: pointer; border-bottom: 1px solid var(--border); }
+    .search-item:hover { background: #f0f9ff; }
+    .search-item strong { display: block; color: var(--text); }
+    .search-item small { color: var(--muted); font-size: 0.85rem; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+    th, td { padding: 0.8rem; border-bottom: 1px solid var(--border); text-align: left; }
+    th { background: #f9fafb; font-weight: 600; }
+    .badge-stock { padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.8rem; }
+    .low { background: #fef3c7; color: #92400e; }
+    .ok { background: #d1fae5; color: #065f46; }
+    .out { background: #fee2e2; color: #991b1b; }
+    .badge-mov { padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.8rem; }
+    .entrada { background: #d1fae5; color: #065f46; }
+    .salida { background: #fee2e2; color: #991b1b; }
+    .actions { display: flex; gap: 0.4rem; }
+    .actions button { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+    .cerrar-box { background: #fef3c7; padding: 1rem; border-radius: 8px; margin-top: 1.5rem; border-left: 4px solid var(--warning); }
+    .cerrar-box h3 { margin-bottom: 0.5rem; color: #92400e; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: white; padding: 10px 16px; border-radius: 8px; opacity: 0; transition: 0.3s; z-index: 99; }
+    .toast.show { opacity: 1; }
+    
+    /* 🖨️ Estilos de impresión */
+    @media print {
+        body * { visibility: hidden; }
+        #print-view, #print-view * { visibility: visible; }
+        #print-view {
+        position: absolute; left: 0; top: 0; width: 100%;
+        padding: 4mm; font-family: Arial, Helvetica, sans-serif; font-size: 8pt; line-height: 1.1;
+        }
+        .print-header { text-align: center; margin-bottom: 2mm; border-bottom: 1.5px solid #000; padding-bottom: 2mm; }
+        .print-header h2 { margin: 0; font-size: 10pt; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
+        .print-header p { margin: 1mm 0 0; font-size: 8pt; font-weight: 600; }
+
+        .cat-title { background: #ddd; font-weight: bold; padding: 1mm 2mm; margin-top: 2mm; border: 1px solid #000; border-bottom: none; font-size: 8pt; text-transform: uppercase; }
+
+        table.print-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+        table.print-table th, table.print-table td {
+        border: 1px solid #000; padding: 0.8mm 1.5mm; text-align: center; font-size: 7.5pt; white-space: nowrap;
+        }
+        table.print-table th { background: #eee; font-weight: bold; font-size: 8pt; }
+        table.print-table td:first-child { text-align: left; width: 38%; overflow: hidden; text-overflow: ellipsis; }
+        table.print-table td:last-child { width: 15%; } /* Espacio para observaciones manuales */
+
+        .print-footer { display: flex; justify-content: space-between; margin-top: 4mm; font-size: 8pt; font-weight: 600; }
+        .firma-box { width: 45%; text-align: center; }
+        .linea-firma { border-bottom: 1px solid #000; height: 6mm; margin-top: 2mm; }
+
+        @page { size: A4 landscape; margin: 5mm; }
+        tr { page-break-inside: avoid; } /* 🔑 Evita que una fila se corte entre páginas */
+    }    
+    @media (max-width: 600px) { 
+      .tabs { flex-wrap: wrap; } 
+      th, td { padding: 0.5rem; font-size: 0.8rem; }
+      .actions { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">🍽️ Solinilla <span id="role-badge" class="badge" style="display:none">ADMIN</span></div>
+    <div style="display:flex; gap:0.5rem;">
+      <button class="btn btn-print" onclick="prepararImpresion()">🖨️ Imprimir Hoja</button>
+      <button class="btn logout" onclick="logout()">Cerrar Sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('productos')">📦 Inventario</div>
+      <div class="tab" onclick="switchTab('movimientos')">🔄 Movimientos</div>
+      <div class="tab" onclick="switchTab('reporte')">📄 Reporte</div>
+    </div>
+
+    <div id="productos" class="panel active">
+      <h2>Gestión de Productos</h2>
+      <table id="prod-table"><thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Vencimiento</th></tr></thead><tbody><tr><td colspan="4" style="text-align:center">Cargando...</td></tr></tbody></table>
+      <div id="admin-forms" style="display:none">
+        <h3 style="margin-top:1.5rem">➕ Nuevo Producto</h3>
+        <form id="form-prod">
+          <input type="text" id="p-id" placeholder="ID único (ej: BEB001)" required>
+          <input type="text" id="p-nombre" placeholder="Nombre del producto" required>
+          <input type="date" id="p-venc">
+          <button type="submit">Crear Producto</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="movimientos" class="panel">
+      <h2>Registrar Entrada / Salida</h2>
+      <form id="form-mov">
+        <div class="search-box">
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="m-buscar" placeholder="🔍 Buscar o selecciona de la lista..." required autocomplete="off" style="flex: 1;">
+            <button type="button" onclick="toggleAllProducts()" style="width: auto; padding: 0.8rem;" title="Ver todos">📋</button>
+          </div>
+          <div id="search-results" class="search-results"></div>
+          <input type="hidden" id="m-id" required>
+        </div>
+        <div id="prod-selected" style="background:#f0f9ff; padding:0.8rem; border-radius:8px; display:none;">
+          <strong id="selected-name"></strong> | Stock actual: <strong id="selected-stock"></strong>
+        </div>
+        <select id="m-tipo" required>
+          <option value="">-- Selecciona tipo --</option>
+          <option value="entrada">📥 Entrada (Suma stock)</option>
+          <option value="salida"> Salida / Venta / Baja (Resta stock)</option>
+        </select>
+        <input type="number" id="m-cant" step="0.01" placeholder="Cantidad (ej: 1.5 o 0.25)" min="0" required>
+        <input type="text" id="m-motivo" placeholder="Motivo" required>
+        <button type="submit">Registrar Movimiento</button>
+      </form>
+
+      <h3 style="margin-top:2rem">📋 Movimientos de Hoy</h3>
+      <table id="mov-table"><thead><tr><th>Hora</th><th>Producto</th><th>Tipo</th><th>Cant.</th><th>Motivo</th><th>Acciones</th></tr></thead><tbody><tr><td colspan="6" style="text-align:center">Cargando...</td></tr></tbody></table>
+
+      <div id="admin-cerrar" style="display:none" class="cerrar-box">
+        <h3>🔒 Terminar Inventario del Día</h3>
+        <form id="form-cerrar">
+          <input type="date" id="c-fecha" required>
+          <textarea id="c-obs" placeholder="Observaciones del cierre" rows="2"></textarea>
+          <button type="submit" class="warning">✅ Cerrar Inventario</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="reporte" class="panel">
+      <h2>Reporte Diario</h2>
+      <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+        <input type="date" id="r-fecha" style="flex:1">
+        <button onclick="cargarReporte()" style="width:auto">Generar</button>
+      </div>
+      <div id="reporte-contenido" style="margin-top:1rem; background:#f9fafb; padding:1rem; border-radius:8px; white-space:pre-wrap; font-size:0.9rem;"></div>
+    </div>
+  </main>
+
+  <!-- 🖨️ Vista de impresión (oculta en pantalla normal) -->
+  <div id="print-view" style="display:none;">
+    <div class="print-header">
+      <h2>INVENTARIO RESTAURANTE SOLINILLA</h2>
+      <p>FECHA: <span id="print-fecha"></span></p>
+    </div>
+    <div id="print-content"></div>
+    <div class="print-footer">
+      <div class="firma-box"><p>NOMBRE INV INICIAL:</p><div class="linea-firma"></div></div>
+      <div class="firma-box"><p>NOMBRE INV FINAL:</p><div class="linea-firma"></div></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    const rol = localStorage.getItem('rol');
+    if (!token) window.location.href = '/';
+    if (rol === 'admin') {
+      document.getElementById('role-badge').style.display = 'inline';
+      document.getElementById('admin-forms').style.display = 'block';
+      document.getElementById('admin-cerrar').style.display = 'block';
+    }
+
+    const api = async (url, method='GET', body=null) => {
+      const opts = { method, headers: { 'Authorization': `Bearer ${token}` } };
+      if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      const res = await fetch(url, opts);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Error en la petición');
+      return data;
+    };
+
+    const show = (msg, type='info') => { const t=document.getElementById('toast'); t.textContent=msg; t.style.background=type==='error'?'#dc2626':type==='success'?'#16a34a':'#333'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); };
+
+    const switchTab = (id) => {
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(id).classList.add('active');
+      if (id === 'movimientos') cargarMovimientosDia();
+    };
+
+    const searchBox = document.getElementById('m-buscar');
+    const resultsBox = document.getElementById('search-results');
+    let searchTimeout;
+    let showingAll = false;
+
+    searchBox.addEventListener('input', (e) => {
+      const query = e.target.value.trim();
+      clearTimeout(searchTimeout);
+      if (showingAll && query.length > 0) showingAll = false;
+      if (query.length < 2) { if (!showingAll) resultsBox.classList.remove('show'); return; }
+      searchTimeout = setTimeout(async () => {
+        try {
+          const data = await api(`/api/productos/buscar?q=${encodeURIComponent(query)}`);
+          resultsBox.innerHTML = '';
+          if (!data.productos.length) resultsBox.innerHTML = '<div class="search-item"><small>No encontrado</small></div>';
+          else data.productos.forEach(p => {
+            const div = document.createElement('div'); div.className = 'search-item';
+            div.innerHTML = `<strong>${p.nombre}</strong><small>ID: ${p.id} | Stock: ${p.stock}</small>`;
+            div.onclick = () => seleccionarProducto(p); resultsBox.appendChild(div);
+          });
+          resultsBox.classList.add('show');
+        } catch (err) { console.error(err); }
+      }, 300);
+    });
+
+    document.addEventListener('click', (e) => { if (!searchBox.contains(e.target) && !resultsBox.contains(e.target)) { resultsBox.classList.remove('show'); showingAll = false; } });
+
+    async function toggleAllProducts() {
+      if (showingAll) { resultsBox.classList.remove('show'); showingAll = false; return; }
+      try {
+        searchBox.placeholder = '📋 Selecciona...';
+        const data = await api('/api/productos');
+        resultsBox.innerHTML = '';
+        const disponibles = data.productos.filter(p => p.stock > 0);
+        const sinStock = data.productos.filter(p => p.stock === 0);
+        const header = document.createElement('div'); header.style.cssText = 'padding:0.5rem 1rem; background:#f0f9ff; font-weight:600; font-size:0.85rem; position:sticky; top:0;';
+        header.innerHTML = `📦 ${data.productos.length} productos (${disponibles.length} disponibles)`; resultsBox.appendChild(header);
+        disponibles.forEach(p => { const div = document.createElement('div'); div.className = 'search-item'; div.innerHTML = `<strong>${p.nombre}</strong><small>ID: ${p.id} | ✅ ${p.stock}</small>`; div.onclick = () => seleccionarProducto(p); resultsBox.appendChild(div); });
+        if (sinStock.length) {
+          const div = document.createElement('div'); div.style.cssText = 'padding:0.4rem 1rem; background:#fef2f2; color:#991b1b; font-size:0.8rem; font-weight:500;'; div.textContent = '⚠️ Sin stock'; resultsBox.appendChild(div);
+          sinStock.forEach(p => { const d = document.createElement('div'); d.className = 'search-item'; d.style.opacity = '0.6'; d.innerHTML = `<strong>${p.nombre}</strong><small>ID: ${p.id} | ❌ 0</small>`; d.onclick = () => seleccionarProducto(p); resultsBox.appendChild(d); });
+        }
+        resultsBox.classList.add('show'); showingAll = true;
+      } catch (err) { show('Error al cargar', 'error'); }
+    }
+
+    function seleccionarProducto(prod) {
+      document.getElementById('m-id').value = prod.id;
+      document.getElementById('m-buscar').value = `${prod.nombre} (${prod.id})`;
+      document.getElementById('selected-name').textContent = prod.nombre;
+      document.getElementById('selected-stock').textContent = prod.stock;
+      document.getElementById('prod-selected').style.display = 'block';
+      resultsBox.classList.remove('show'); showingAll = false;
+    }
+
+    const fmt = (n) => {
+        const num = parseFloat(n) || 0;
+        return Number.isInteger(num) ? num : num.toFixed(2).replace(/\.?0+$/, '');
+    };
+
+    const renderProductos = (prods) => {
+      const tbody = document.querySelector('#prod-table tbody'); tbody.innerHTML = '';
+      if (!prods.length) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Vacío</td></tr>';
+      prods.forEach(p => {
+        const hoy = new Date().toISOString().split('T')[0];
+        let status = '<span class="badge-stock ok">OK</span>';
+        if (p.stock <= 5) status = '<span class="badge-stock low">Bajo</span>';
+        if (p.fecha_vencimiento && p.fecha_vencimiento < hoy) status = '<span class="badge-stock out">Vencido</span>';
+        tbody.innerHTML += `<tr><td>${p.id}</td><td>${p.nombre}</td><td style="color:${p.stock < 0 ? '#dc2626' : 'inherit'}">${fmt(p.stock)} ${status}</td><td>${p.fecha_vencimiento || 'N/A'}</td></tr>`;
+      });
+    };
+
+    const cargarMovimientosDia = async () => {
+      try {
+        const data = await api('/api/movimientos/dia');
+        const tbody = document.querySelector('#mov-table tbody'); tbody.innerHTML = '';
+        if (!data.movimientos.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Sin movimientos hoy</td></tr>'; return; }
+        data.movimientos.forEach(m => {
+          const hora = m.fecha.split(' ')[1] || '';
+          const cls = m.tipo === 'entrada' ? 'entrada' : 'salida';
+          const icon = m.tipo === 'entrada' ? '📥' : '📤';
+          tbody.innerHTML += `<tr><td>${hora}</td><td>${m.nombre}</td><td><span class="badge-mov ${cls}">${icon} ${m.tipo}</span></td><td>${fmt(m.cantidad)}</td><td>${m.motivo}</td><td class="actions">${rol==='admin'?`<button class="secondary" onclick="editarMovimiento(${m.id}, ${m.cantidad}, '${m.motivo.replace(/'/g,"\\'")}')">✏️</button><button class="danger" onclick="eliminarMovimiento(${m.id})">🗑️</button>`:'-'}</td></tr>`;
+        });
+      } catch (e) { show(e.message, 'error'); }
+    };
+
+    const cargarReporte = async () => {
+      const fecha = document.getElementById('r-fecha').value || new Date().toISOString().split('T')[0];
+      const cont = document.getElementById('reporte-contenido'); cont.textContent = 'Cargando...';
+      try {
+        const data = await api(`/api/reporte?fecha=${fecha}`);
+        let txt = `📄 REPORTE: ${data.fecha}\n📦 MOVIMIENTOS:\n`;
+        data.movimientos.forEach(m => txt += `  ${m.nombre} | ${m.tipo==='entrada'?'+':'-'}${m.cantidad} | ${m.motivo}\n`);
+        txt += `\n📊 STOCK ACTUAL:\n`;
+        data.stock_cierre.forEach(s => txt += `  ${s.nombre}: ${s.stock} uds${s.fecha_vencimiento ? ` (Vence: ${s.fecha_vencimiento})` : ''}\n`);
+        cont.textContent = txt || 'Sin movimientos.';
+      } catch (e) { show(e.message, 'error'); }
+    };
+
+    window.editarMovimiento = async (id, cantActual, motivoActual) => {
+      const nuevaCant = prompt(`Nueva cantidad (actual: ${cantActual}):`, cantActual);
+      if (!nuevaCant || nuevaCant == cantActual) return;
+      const nuevoMotivo = prompt(`Nuevo motivo (actual: ${motivoActual}):`, motivoActual) || motivoActual;
+      try {
+        await api(`/api/movimientos/${id}`, 'PUT', { id_prod: '', tipo: 'entrada', cantidad: parseFloat(nuevaCant), motivo: nuevoMotivo });
+        show('✅ Editado', 'success'); cargarMovimientosDia(); api('/api/productos').then(d => renderProductos(d.productos));
+      } catch (e) { show(e.message, 'error'); }
+    };
+
+    window.eliminarMovimiento = async (id) => {
+      if (!confirm('¿Eliminar y revertir stock?')) return;
+      try { await api(`/api/movimientos/${id}`, 'DELETE'); show('✅ Eliminado', 'success'); cargarMovimientosDia(); api('/api/productos').then(d => renderProductos(d.productos)); } catch (e) { show(e.message, 'error'); }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('r-fecha').value = new Date().toISOString().split('T')[0];
+      document.getElementById('c-fecha').value = new Date().toISOString().split('T')[0];
+      api('/api/productos').then(d => renderProductos(d.productos)).catch(e => show(e.message, 'error'));
+    });
+
+    document.getElementById('form-prod')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { await api('/api/productos', 'POST', { id: document.getElementById('p-id').value.trim(), nombre: document.getElementById('p-nombre').value.trim(), fecha_vencimiento: document.getElementById('p-venc').value || '' }); show('✅ Creado', 'success'); e.target.reset(); api('/api/productos').then(d => renderProductos(d.productos)); } catch (e) { show(e.message, 'error'); }
+    });
+
+    document.getElementById('form-mov')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const idProd = document.getElementById('m-id').value.trim();
+      if (!idProd) { show('❌ Selecciona un producto', 'error'); return; }
+      try {
+        await api('/api/movimientos', 'POST', { id_prod: idProd, tipo: document.getElementById('m-tipo').value, cantidad: parseFloat(document.getElementById('m-cant').value), motivo: document.getElementById('m-motivo').value.trim() });
+        show('✅ Registrado', 'success'); e.target.reset(); document.getElementById('prod-selected').style.display = 'none'; document.getElementById('m-buscar').value = '';
+        cargarMovimientosDia(); api('/api/productos').then(d => renderProductos(d.productos));
+      } catch (e) { show(e.message, 'error'); }
+    });
+
+    document.getElementById('form-cerrar')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!confirm('¿Cerrar inventario del día?')) return;
+      try { await api('/api/inventario/cerrar', 'POST', { fecha: document.getElementById('c-fecha').value, observaciones: document.getElementById('c-obs').value.trim() }); show('🔒 Cerrado', 'success'); e.target.reset(); document.getElementById('c-fecha').value = new Date().toISOString().split('T')[0]; } catch (e) { show(e.message, 'error'); }
+    });
+
+    async function prepararImpresion() {
+        try {
+            const fecha = prompt("Fecha del inventario (YYYY-MM-DD):", new Date().toISOString().split('T')[0]);
+            if (!fecha) return;
+    
+            const data = await api(`/api/hoja-inventario?fecha=${fecha}`);
+            document.getElementById('print-fecha').textContent = data.fecha;
+    
+            let html = '';
+            for (const [cat, prods] of Object.entries(data.categorias)) {
+                html += `<div class="cat-title">${cat}</div>`;
+                html += `<table class="print-table"><thead><tr>
+                    <th>PRODUCTOS</th><th>INV. INI</th><th>ENTRA</th><th>TOTAL</th>
+                    <th>VENTAS/BAJAS</th><th>INV. FINAL</th><th>OBSERVACIONES</th>
+                </tr></thead><tbody>`;
+      
+                 prods.forEach(p => {
+                    html += `<tr>
+                        <td style="text-align:left">${p.nombre}</td>
+                        <td>${fmt(p.inv_ini)}</td>
+                        <td>${fmt(p.entra)}</td>
+                        <td>${fmt(p.total)}</td>
+                        <td>${fmt(p.ventas_bajas)}</td>
+                        <td style="font-weight:700">${fmt(p.inv_final)}</td>
+                        <td></td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+    
+            document.getElementById('print-content').innerHTML = html;
+            document.getElementById('print-view').style.display = 'block';
+            setTimeout(() => { window.print(); document.getElementById('print-view').style.display = 'none'; }, 150);
+        } catch (e) { show('Error: ' + e.message, 'error'); }
+    }
+
+
+
+
+    function logout() { localStorage.clear(); window.location.href = '/'; }
+  </script>
+</body>
+</html>

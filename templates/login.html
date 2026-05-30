@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | Restaurante Solinilla</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .card { background: #ffffff; padding: 2rem; border-radius: 16px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); width: 100%; max-width: 380px; }
+    .logo { text-align: center; font-size: 2.8rem; margin-bottom: 0.5rem; }
+    h2 { text-align: center; color: #111827; margin-bottom: 1.5rem; font-weight: 600; }
+    input { width: 100%; padding: 0.85rem; margin: 0.4rem 0 1rem; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 1rem; transition: 0.2s; }
+    input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+    button { width: 100%; padding: 0.85rem; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #1d4ed8; }
+    .error { color: #dc2626; text-align: center; margin-top: 0.8rem; font-size: 0.88rem; display: none; background: #fef2f2; padding: 0.5rem; border-radius: 6px; }
+    .footer { text-align: center; margin-top: 1.2rem; font-size: 0.75rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🍽️</div>
+    <h2>Sistema Solinilla</h2>
+    <form id="login-form">
+      <input type="text" id="username" placeholder="Usuario" required autocomplete="username">
+      <input type="password" id="password" placeholder="Contraseña" required autocomplete="current-password">
+      <button type="submit">Iniciar Sesión</button>
+    </form>
+    <p class="error" id="error-msg"></p>
+    <p class="footer">v1.0 | Multiplataforma</p>
+  </div>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      const errorEl = document.getElementById('error-msg');
+      btn.disabled = true;
+      btn.textContent = 'Verificando...';
+      errorEl.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('token', data.access_token);
+          localStorage.setItem('rol', data.rol);
+          window.location.href = '/dashboard';
+        } else {
+          throw new Error(data.detail || 'Credenciales incorrectas');
+        }
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Iniciar Sesión';
+      }
+    });
+  </script>
+</body>
+</html>
