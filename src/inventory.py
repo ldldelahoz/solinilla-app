@@ -231,3 +231,26 @@ def cerrar_inventario_dia(fecha: str = None, observaciones: str = "") -> Tuple[b
             SELECT ?, COUNT(*), ?, ? FROM movimientos WHERE fecha LIKE ?
         """, (fecha, len(products), observaciones, f"{fecha}%"))
     return True, f"✅ Cierre guardado. El stock final de hoy será el INV. INI de mañana."
+
+def obtener_usuario_por_username(username: str):
+    """Obtiene un usuario desde la base de datos por su nombre de usuario."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, username, password_hash, rol FROM usuarios WHERE username = %s",
+                    (username,)
+                )
+                user = cur.fetchone()
+                # Convertir a diccionario si se encontró
+                if user:
+                    return dict(user) if hasattr(user, 'keys') else {
+                        'id': user[0],
+                        'username': user[1],
+                        'password_hash': user[2],
+                        'rol': user[3]
+                    }
+                return None
+    except Exception as e:
+        print(f"❌ Error obteniendo usuario: {e}")
+        return None
