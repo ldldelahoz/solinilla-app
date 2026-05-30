@@ -205,3 +205,33 @@ async def startup_event():
     """Inicializa la BD al arrancar."""
     from src.db import init_db
     init_db()
+
+
+
+# === ENDPOINT DE DEBUG PARA AUTH (eliminar después de probar) ===
+@app.get("/api/debug/auth-test")
+async def debug_auth_test():
+    """Prueba directa de verificación de contraseña."""
+    from src.auth import pwd_context, verify_password
+    
+    test_password = "Admin2026!"
+    
+    # Obtener hash real de la BD
+    from src.inventory import obtener_usuario_por_username
+    user = obtener_usuario_por_username("admin")
+    
+    if not user:
+        return {"error": "Usuario admin no encontrado en BD"}
+    
+    stored_hash = user.get("password_hash", "")
+    
+    # Verificar manualmente
+    is_valid = verify_password(test_password, stored_hash)
+    
+    return {
+        "password_tested": test_password,
+        "stored_hash_prefix": stored_hash.split("$")[1] if "$" in stored_hash else "unknown",
+        "pwd_context_schemes": list(pwd_context.schemes()),
+        "verification_result": is_valid,
+        "hash_match": stored_hash.startswith("$pbkdf2-sha256$")
+    }
