@@ -1,256 +1,295 @@
-import sqlite3
-from typing import List, Dict, Tuple, Optional
+#!/usr/bin/env python3
+"""Módulo de operaciones de inventario y usuarios."""
+
 from datetime import datetime
-from datetime import datetime, timedelta
-from src.db import get_conn
-import logging
+from src.db import get_conn, DB_TYPE
 
-logger = logging.getLogger(__name__)
-
-def crear_producto(id_prod: str, nombre: str, fecha_venc: str = "") -> Tuple[bool, str]:
-    try:
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT INTO productos (id, nombre, stock, fecha_vencimiento) VALUES (?, ?, 0, ?)",
-                (id_prod.upper(), nombre.strip(), fecha_venc or None)
-            )
-        logger.info(f"➕ Producto creado: {id_prod}")
-        return True, "✅ Producto creado correctamente."
-    except sqlite3.IntegrityError:
-        return False, "❌ El ID ya existe en el sistema."
-    except Exception as e:
-        logger.error(f"Error creando producto: {e}")
-        return False, f"❌ Error interno: {str(e)}"
-
-def obtener_productos() -> List[Dict]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT id, nombre, stock, fecha_vencimiento FROM productos ORDER BY nombre").fetchall()
-        return [dict(r) for r in rows]
-
-def buscar_productos(query: str) -> List[Dict]:
-    """Busca productos por ID o nombre (para el selector)"""
-    with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT id, nombre, stock 
-            FROM productos 
-            WHERE id LIKE ? OR nombre LIKE ?
-            ORDER BY nombre
-            LIMIT 20
-        """, (f"%{query.upper()}%", f"%{query}%")).fetchall()
-        return [dict(r) for r in rows]
-
-def registrar_movimiento(id_prod: str, tipo: str, cantidad: float, motivo: str) -> Tuple[bool, str]:
-    id_prod = id_prod.upper()
-    if cantidad <= 0:
-        return False, "❌ La cantidad debe ser mayor a 0."
-    
-    with get_conn() as conn:
-        prod = conn.execute("SELECT stock FROM productos WHERE id=?", (id_prod,)).fetchone()
-        if not prod:
-            return False, "❌ Producto no encontrado."
-        
-        stock_actual = prod["stock"]
-        if tipo == "salida" and stock_actual < cantidad:
-            return False, f"❌ Stock insuficiente. Disponible: {stock_actual}"
-        
-        nuevo_stock = stock_actual + cantidad if tipo == "entrada" else stock_actual - cantidad
-        conn.execute("UPDATE productos SET stock=? WHERE id=?", (nuevo_stock, id_prod))
-        conn.execute(
-            "INSERT INTO movimientos (producto_id, tipo, cantidad, motivo) VALUES (?, ?, ?, ?)",
-            (id_prod, tipo, cantidad, motivo.strip())
-        )
-        logger.info(f"📦 {tipo.capitalize()} registrada para {id_prod}: {cantidad} uds.")
-        return True, f"✅ {tipo.capitalize()} registrada. Nuevo stock: {nuevo_stock}"
-
-def obtener_movimientos_dia(fecha: str = None) -> List[Dict]:
-    fecha = fecha or datetime.now().strftime("%Y-%m-%d")
-    with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT m.id, m.fecha, p.nombre, p.id as producto_id, m.tipo, m.cantidad, m.motivo
-            FROM movimientos m
-            JOIN productos p ON m.producto_id = p.id
-            WHERE m.fecha LIKE ?
-            ORDER BY m.fecha DESC
-        """, (f"{fecha}%",)).fetchall()
-        return [dict(r) for r in rows]
-
-def editar_movimiento(mov_id: int, nueva_cantidad: float, nuevo_motivo: str = None) -> Tuple[bool, str]:
-    """Edita un movimiento existente y recalcula el stock"""
-    if nueva_cantidad <= 0:
-        return False, "❌ La cantidad debe ser mayor a 0."
-    
-    with get_conn() as conn:
-        # Obtener movimiento original
-        mov = conn.execute("SELECT * FROM movimientos WHERE id=?", (mov_id,)).fetchone()
-        if not mov:
-            return False, "❌ Movimiento no encontrado."
-        
-        prod_id = mov["producto_id"]
-        tipo = mov["tipo"]
-        cantidad_old = mov["cantidad"]
-        
-        # Calcular diferencia
-        diff = nueva_cantidad - cantidad_old
-        
-        # Actualizar stock del producto
-        prod = conn.execute("SELECT stock FROM productos WHERE id=?", (prod_id,)).fetchone()
-        nuevo_stock = prod["stock"] + diff if tipo == "entrada" else prod["stock"] - diff
-        
-        if nuevo_stock < 0:
-            return False, f"❌ Stock insuficiente después del cambio. Stock actual: {prod['stock']}"
-        
-        # Actualizar movimiento y stock
-        if nuevo_motivo:
-            conn.execute("""
-                UPDATE movimientos 
-                SET cantidad=?, motivo=? 
-                WHERE id=?
-            """, (nueva_cantidad, nuevo_motivo.strip(), mov_id))
-        else:
-            conn.execute("UPDATE movimientos SET cantidad=? WHERE id=?", (nueva_cantidad, mov_id))
-        
-        conn.execute("UPDATE productos SET stock=? WHERE id=?", (nuevo_stock, prod_id))
-        
-        logger.info(f"✏️ Movimiento {mov_id} editado: {cantidad_old} → {nueva_cantidad}")
-        return True, f"✅ Movimiento editado. Nuevo stock: {nuevo_stock}"
-
-def eliminar_movimiento(mov_id: int) -> Tuple[bool, str]:
-    """Elimina un movimiento y revierte su efecto en el stock"""
-    with get_conn() as conn:
-        mov = conn.execute("SELECT * FROM movimientos WHERE id=?", (mov_id,)).fetchone()
-        if not mov:
-            return False, "❌ Movimiento no encontrado."
-        
-        prod_id = mov["producto_id"]
-        tipo = mov["tipo"]
-        cantidad = mov["cantidad"]
-        
-        # Revertir stock
-        prod = conn.execute("SELECT stock FROM productos WHERE id=?", (prod_id,)).fetchone()
-        nuevo_stock = prod["stock"] - cantidad if tipo == "entrada" else prod["stock"] + cantidad
-        
-        conn.execute("DELETE FROM movimientos WHERE id=?", (mov_id,))
-        conn.execute("UPDATE productos SET stock=? WHERE id=?", (nuevo_stock, prod_id))
-        
-        logger.info(f"🗑️ Movimiento {mov_id} eliminado")
-        return True, "✅ Movimiento eliminado correctamente."
-
-def generar_reporte(fecha: str = None) -> Dict:
-    fecha = fecha or datetime.now().strftime("%Y-%m-%d")
-    with get_conn() as conn:
-        movs = conn.execute("""
-            SELECT m.fecha, p.nombre, m.tipo, m.cantidad, m.motivo 
-            FROM movimientos m 
-            JOIN productos p ON m.producto_id = p.id 
-            WHERE m.fecha LIKE ? 
-            ORDER BY m.fecha DESC
-        """, (f"{fecha}%",)).fetchall()
-        
-        stock_actual = conn.execute("SELECT nombre, stock, fecha_vencimiento FROM productos ORDER BY nombre").fetchall()
-        
-    return {
-        "fecha": fecha,
-        "movimientos": [dict(m) for m in movs],
-        "stock_cierre": [dict(s) for s in stock_actual]
-    }
-
-
-
-def generar_hoja_impresion(fecha: str = None) -> dict:
-    fecha = fecha or datetime.now().strftime("%Y-%m-%d")
-    fecha_obj = datetime.strptime(fecha, "%Y-%m-%d")
-    prev_fecha = (fecha_obj - timedelta(days=1)).strftime("%Y-%m-%d")
-    
-    with get_conn() as conn:
-        #  Snapshot del día solicitado (congela INV. FINAL al momento del cierre)
-        snapshot_actual = {row["producto_id"]: row["stock_cierre"] for row in 
-                           conn.execute("SELECT producto_id, stock_cierre FROM snapshots_inventario WHERE fecha=?", (fecha,)).fetchall()}
-                           
-        # 📅 Snapshot del día anterior (base para INV. INI)
-        prev_snapshot = {row["producto_id"]: row["stock_cierre"] for row in 
-                         conn.execute("SELECT producto_id, stock_cierre FROM snapshots_inventario WHERE fecha=?", (prev_fecha,)).fetchall()}
-        
-        # 🔄 Movimientos reales del día
-        movements = conn.execute("""
-            SELECT producto_id, tipo, SUM(cantidad) as cant 
-            FROM movimientos WHERE fecha LIKE ? GROUP BY producto_id, tipo
-        """, (f"{fecha}%",)).fetchall()
-        
-        mov_map = {}
-        for m in movements:
-            mov_map[f"{m['producto_id']}_{m['tipo']}"] = float(m['cant'])
-            
-        products = conn.execute("SELECT id, nombre, stock FROM productos ORDER BY nombre").fetchall()
-        categorias = {"BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": [], "VARIOS": []}
-        
-        for p in products:
-            pid, nombre, stock_live = p["id"], p["nombre"], float(p["stock"])
-            
-            # 🧊 INV. FINAL congelado (o fallback a stock actual si aún no se cerró)
-            inv_final = snapshot_actual.get(pid, stock_live)
-            
-            # 📅 INV. INI del día anterior (o cálculo inverso si es primer día)
-            inv_ini = prev_snapshot.get(pid)
-            if inv_ini is None:
-                entra = mov_map.get(f"{pid}_entrada", 0.0)
-                sale = mov_map.get(f"{pid}_salida", 0.0)
-                inv_ini = inv_final + sale - entra
-            
-            entra = mov_map.get(f"{pid}_entrada", 0.0)
-            sale = mov_map.get(f"{pid}_salida", 0.0)
-            
-            cat = "VARIOS"
-            if pid.startswith("BEB"): cat = "BEBIDAS"
-            elif pid.startswith("LIC"): cat = "RON Y VINOS"
-            elif pid.startswith("FRU"): cat = "PULPAS Y FRUTAS"
-            elif pid.startswith("HEL"): cat = "HELADOS Y POSTRES"
-            
-            categorias[cat].append({
-                "nombre": nombre,
-                "inv_ini": inv_ini,
-                "entra": entra,
-                "total": inv_ini + entra,
-                "ventas_bajas": sale,
-                "inv_final": inv_final  #  Congelado al cierre
-            })
-            
-    return {"fecha": fecha, "categorias": {k: v for k, v in categorias.items() if v}}
-
-def cerrar_inventario_dia(fecha: str = None, observaciones: str = "") -> Tuple[bool, str]:
-    fecha = fecha or datetime.now().strftime("%Y-%m-%d")
-    with get_conn() as conn:
-        products = conn.execute("SELECT id, stock FROM productos").fetchall()
-        for p in products:
-            conn.execute("""
-                INSERT OR REPLACE INTO snapshots_inventario (fecha, producto_id, stock_cierre) 
-                VALUES (?, ?, ?)
-            """, (fecha, p["id"], float(p["stock"])))
-            
-        conn.execute("""
-            INSERT INTO cierres_inventario (fecha, total_movimientos, total_productos, observaciones)
-            SELECT ?, COUNT(*), ?, ? FROM movimientos WHERE fecha LIKE ?
-        """, (fecha, len(products), observaciones, f"{fecha}%"))
-    return True, f"✅ Cierre guardado. El stock final de hoy será el INV. INI de mañana."
+# === USUARIOS ===
 
 def obtener_usuario_por_username(username: str):
     """Obtiene un usuario desde la base de datos por su nombre de usuario."""
+    conn = get_conn()
+    cur = conn.cursor()
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, username, password_hash, rol FROM usuarios WHERE username = %s",
-                    (username,)
-                )
-                user = cur.fetchone()
-                # Convertir a diccionario si se encontró
-                if user:
-                    return dict(user) if hasattr(user, 'keys') else {
-                        'id': user[0],
-                        'username': user[1],
-                        'password_hash': user[2],
-                        'rol': user[3]
-                    }
-                return None
+        if DB_TYPE == "postgres":
+            query = "SELECT id, username, password_hash, rol FROM usuarios WHERE username = %s"
+            cur.execute(query, (username,))
+        else:
+            query = "SELECT id, username, password_hash, rol FROM usuarios WHERE username = ?"
+            cur.execute(query, (username,))
+        
+        user = cur.fetchone()
+        if user:
+            # Manejar tanto dict (PostgreSQL con RealDictCursor) como tuple (SQLite)
+            if hasattr(user, 'keys'):  # psycopg2 RealDictCursor
+                return dict(user)
+            else:  # sqlite3 Row o tuple
+                return {
+                    'id': user[0],
+                    'username': user[1],
+                    'password_hash': user[2],
+                    'rol': user[3]
+                }
+        return None
     except Exception as e:
         print(f"❌ Error obteniendo usuario: {e}")
         return None
+    finally:
+        cur.close()
+        conn.close()
+
+# === PRODUCTOS ===
+
+def obtener_productos():
+    """Obtiene todos los productos de la base de datos."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        query = "SELECT id, nombre, stock, fecha_vencimiento FROM productos ORDER BY nombre"
+        cur.execute(query)
+        rows = cur.fetchall()
+        
+        # Convertir a lista de diccionarios
+        if DB_TYPE == "postgres":
+            return [dict(row) for row in rows]
+        else:
+            # SQLite: crear diccionarios manualmente
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        print(f"❌ Error obteniendo productos: {e}")
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+def crear_producto(id_prod: str, nombre: str, stock: float = 0, fecha_vencimiento: str = None):
+    """Crea un nuevo producto en la base de datos."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if DB_TYPE == "postgres":
+            query = """
+                INSERT INTO productos (id, nombre, stock, fecha_vencimiento) 
+                VALUES (%s, %s, %s, %s)
+            """
+            cur.execute(query, (id_prod, nombre, stock, fecha_vencimiento))
+        else:
+            query = """
+                INSERT INTO productos (id, nombre, stock, fecha_vencimiento) 
+                VALUES (?, ?, ?, ?)
+            """
+            cur.execute(query, (id_prod, nombre, stock, fecha_vencimiento))
+        
+        conn.commit()
+        return True, "✅ Producto creado"
+    except Exception as e:
+        conn.rollback()
+        return False, f"❌ Error: {e}"
+    finally:
+        cur.close()
+        conn.close()
+
+def eliminar_producto(id_prod: str):
+    """Elimina un producto de la base de datos."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if DB_TYPE == "postgres":
+            query = "DELETE FROM productos WHERE id = %s"
+            cur.execute(query, (id_prod,))
+        else:
+            query = "DELETE FROM productos WHERE id = ?"
+            cur.execute(query, (id_prod,))
+        
+        conn.commit()
+        if cur.rowcount > 0:
+            return True, "✅ Producto eliminado"
+        return False, "❌ Producto no encontrado"
+    except Exception as e:
+        conn.rollback()
+        return False, f"❌ Error: {e}"
+    finally:
+        cur.close()
+        conn.close()
+
+# === MOVIMIENTOS ===
+
+def registrar_movimiento(id_prod: str, tipo: str, cantidad: float, motivo: str = None):
+    """Registra un movimiento (entrada/salida) y actualiza el stock."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 1. Verificar que el producto existe y obtener stock actual
+        if DB_TYPE == "postgres":
+            cur.execute("SELECT stock FROM productos WHERE id = %s", (id_prod,))
+        else:
+            cur.execute("SELECT stock FROM productos WHERE id = ?", (id_prod,))
+        
+        producto = cur.fetchone()
+        if not producto:
+            return False, "❌ Producto no encontrado"
+        
+        # Obtener valor de stock (compatible con dict y tuple)
+        stock_actual = producto['stock'] if hasattr(producto, 'keys') else producto[0]
+        
+        # 2. Calcular nuevo stock
+        if tipo == "entrada":
+            nuevo_stock = stock_actual + cantidad
+        elif tipo == "salida":
+            nuevo_stock = stock_actual - cantidad
+            if nuevo_stock < 0:
+                return False, "❌ Stock insuficiente"
+        else:
+            return False, "❌ Tipo de movimiento inválido"
+        
+        # 3. Actualizar stock del producto
+        if DB_TYPE == "postgres":
+            cur.execute("UPDATE productos SET stock = %s WHERE id = %s", (nuevo_stock, id_prod))
+            # 4. Registrar el movimiento
+            cur.execute(
+                "INSERT INTO movimientos (producto_id, tipo, cantidad, motivo) VALUES (%s, %s, %s, %s)",
+                (id_prod, tipo, cantidad, motivo)
+            )
+        else:
+            cur.execute("UPDATE productos SET stock = ? WHERE id = ?", (nuevo_stock, id_prod))
+            cur.execute(
+                "INSERT INTO movimientos (producto_id, tipo, cantidad, motivo) VALUES (?, ?, ?, ?)",
+                (id_prod, tipo, cantidad, motivo)
+            )
+        
+        conn.commit()
+        return True, f"✅ Movimiento registrado. Nuevo stock: {nuevo_stock}"
+    except Exception as e:
+        conn.rollback()
+        return False, f"❌ Error: {e}"
+    finally:
+        cur.close()
+        conn.close()
+
+def obtener_movimientos_dia(fecha: str):
+    """Obtiene todos los movimientos de una fecha específica."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if DB_TYPE == "postgres":
+            query = """
+                SELECT m.id, m.producto_id, p.nombre, m.tipo, m.cantidad, m.motivo, m.fecha
+                FROM movimientos m
+                LEFT JOIN productos p ON m.producto_id = p.id
+                WHERE DATE(m.fecha) = DATE(%s)
+                ORDER BY m.fecha DESC
+            """
+            cur.execute(query, (fecha,))
+        else:
+            query = """
+                SELECT m.id, m.producto_id, p.nombre, m.tipo, m.cantidad, m.motivo, m.fecha
+                FROM movimientos m
+                LEFT JOIN productos p ON m.producto_id = p.id
+                WHERE DATE(m.fecha) = DATE(?)
+                ORDER BY m.fecha DESC
+            """
+            cur.execute(query, (fecha,))
+        
+        rows = cur.fetchall()
+        
+        # Convertir a lista de diccionarios
+        if DB_TYPE == "postgres":
+            return [dict(row) for row in rows]
+        else:
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        print(f"❌ Error obteniendo movimientos: {e}")
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+# === CIERRE DE INVENTARIO ===
+
+def cerrar_inventario_dia(fecha: str, observaciones: str = ""):
+    """Registra el cierre del inventario de un día (snapshot)."""
+    try:
+        # Aquí podrías guardar un snapshot del stock actual en una tabla 'cierres'
+        # Por ahora, solo registramos en logs
+        print(f"🔒 Cierre de inventario para {fecha}: {observaciones}")
+        return True, f"✅ Inventario cerrado para {fecha}"
+    except Exception as e:
+        return False, f"❌ Error al cerrar: {e}"
+
+# === INICIALIZACIÓN ===
+
+def init_db():
+    """Crea las tablas si no existen."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if DB_TYPE == "postgres":
+            # Tabla productos
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS productos (
+                    id TEXT PRIMARY KEY,
+                    nombre TEXT NOT NULL,
+                    stock REAL NOT NULL DEFAULT 0,
+                    fecha_vencimiento TEXT
+                )
+            """)
+            # Tabla usuarios
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    rol TEXT NOT NULL DEFAULT 'usuario'
+                )
+            """)
+            # Tabla movimientos
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS movimientos (
+                    id SERIAL PRIMARY KEY,
+                    producto_id TEXT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+                    tipo TEXT NOT NULL,
+                    cantidad REAL NOT NULL,
+                    motivo TEXT,
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            # SQLite fallback
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS productos (
+                    id TEXT PRIMARY KEY,
+                    nombre TEXT NOT NULL,
+                    stock REAL NOT NULL DEFAULT 0,
+                    fecha_vencimiento TEXT
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    rol TEXT NOT NULL DEFAULT 'usuario'
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS movimientos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    producto_id TEXT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+                    tipo TEXT NOT NULL,
+                    cantidad REAL NOT NULL,
+                    motivo TEXT,
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        
+        conn.commit()
+        print(f"✅ init_db() completado ({DB_TYPE})")
+        return True
+    except Exception as e:
+        print(f"❌ Error en init_db: {e}")
+        return False
+    finally:
+        cur.close()
+        conn.close()
