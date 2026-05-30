@@ -15,7 +15,10 @@ from src.auth import (
     get_current_user, require_admin, ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from src import inventory
-
+# === ENDPOINT DE SALUD MÍNIMO ===
+@app.get("/api/health")
+async def health_check():
+    return {"status": "alive", "app": "solinilla-cloud"}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
