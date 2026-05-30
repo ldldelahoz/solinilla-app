@@ -235,3 +235,43 @@ async def debug_auth_test():
         "verification_result": is_valid,
         "hash_match": stored_hash.startswith("$pbkdf2-sha256$")
     }
+
+
+@app.get("/api/deep-debug")
+async def deep_debug_auth():
+    try:
+        from src.db import get_conn
+        from src.auth import verify_password, pwd_context
+        
+        response = {
+            "db_status": "checking...",
+            "user_found": False,
+            "hash_prefix": "N/A",
+            "password_check": "N/A",
+            "pwd_schemes": list(pwd_context.schemes())
+        }
+
+        # 1. Intentar conectar a la BD que usa Render
+        with get_conn() as conn:
+            response["db_status"] = "connected"
+            with conn.cursor() as cur:
+                # 2. Buscar usuario admin
+                cur.execute("SELECT username, password_hash FROM usuarios WHERE username = %s", ("admin",))
+                user = cur.fetchone()
+                
+                if user:
+                    response["user_found"] = True
+                    # Obtener el hash (compatible con dict y tuple)
+                    hash_val = user['password_hash'] if hasattr(user, 'keys') else user[1]
+                    response["hash_prefix"] = hash_val.split('$')[1] if '$' in hash_val else "unknown"
+                    
+                    # 3. Verificar la contraseña "Admin2026!" con el hash de la BD
+                    is_valid = verify_password("Admin2026!", hash_val)
+                    response["password_check"] = "✅ CORRECTO" if is_valid else "❌ INCORRECTO"
+                else:
+                    response["error"] = "El usuario 'admin' NO EXISTE en esta base de datos."
+                    
+        return response
+
+    except Exception as e:
+        return {"error": str(e), "trace": str(e)}
