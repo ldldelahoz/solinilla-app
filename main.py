@@ -180,88 +180,60 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
     for cat in cats:
         cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
-
 @app.get("/api/reporte/pdf")
 def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
-    productos = obtener_productos()
-    movimientos = obtener_movimientos_dia(fecha)
-    cats = calcular_inventario(productos, movimientos, fecha)
-    
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=0.3*inch, leftMargin=0.3*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    # Título
-    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=12, alignment=1, spaceAfter=6)
-    elements.append(Paragraph(f"INVENTARIO RESTAURANTE SOLINILLA", title_style))
-    elements.append(Paragraph(f"FECHA: {fecha}", ParagraphStyle('Subtitle', alignment=1, fontSize=9, spaceAfter=12)))
-    
-    # Columnas EXACTAS como tu foto
-    data = [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV. FINAL', 'BAJAS', 'OBSERVACIONES']]
-    
-    # Anchos de columna
-    col_widths = [2.8*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.6*inch, 1.9*inch]
-    
-    for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
-        if cat_name in cats and cats[cat_name]:
-            # Fila de categoría (fondo gris)
-            data.append([cat_name, '', '', '', '', '', '', ''])
-            
-            for prod in cats[cat_name]:
-                data.append([
-                    prod['nombre'],
-                    str(prod['inv_ini']),
-                    str(prod['entra']),
-                    str(prod['total']),
-                    str(prod['ventas']),
-                    str(prod['inv_final']),
-                    prod['bajas'],
-                    prod['observaciones']
-                ])
-    
-    # Crear tabla
-    table = Table(data, colWidths=col_widths)
-    style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-    ])
-    
-    # Colorear filas de categorías
-    current_row = 1
-    for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
-        if cat_name in cats and cats[cat_name]:
-            len_cat = len(cats[cat_name])
-            style.add('BACKGROUND', (0, current_row), (-1, current_row), colors.lightgrey)
-            style.add('FONTNAME', (0, current_row), (0, current_row), 'Helvetica-Bold')
-            style.add('SPAN', (0, current_row), (-1, current_row))
-            style.add('ALIGN', (0, current_row), (-1, current_row), 'LEFT')
-            current_row += 1
-            current_row += len_cat
-            
-    table.setStyle(style)
-    elements.append(table)
-    
-    # Espacio para firmas al final
-    elements.append(Spacer(1, 0.5*inch))
-    firma_style = ParagraphStyle('Firma', fontSize=8, alignment=1, spaceBefore=20)
-    elements.append(Paragraph("_________________________", firma_style))
-    elements.append(Paragraph("NOMBRE INV INICIAL", ParagraphStyle('Small', fontSize=7, alignment=1)))
-    elements.append(Spacer(1, 0.3*inch))
-    elements.append(Paragraph("_________________________", firma_style))
-    elements.append(Paragraph("NOMBRE INV FINAL", ParagraphStyle('Small', fontSize=7, alignment=1)))
-    
-    doc.build(elements)
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=inventario_{fecha}.pdf"})
+    try:
+        productos = obtener_productos()
+        movimientos = obtener_movimientos_dia(fecha)
+        cats = calcular_inventario(productos, movimientos, fecha)
+        
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), 
+                                rightMargin=0.3*inch, leftMargin=0.3*inch)
+        elements = []
+        
+        # Título
+        elements.append(Paragraph("INVENTARIO RESTAURANTE SOLINILLA", 
+                                 ParagraphStyle('Title', fontSize=12, alignment=1)))
+        elements.append(Paragraph(f"FECHA: {fecha}", 
+                                 ParagraphStyle('Sub', fontSize=9, alignment=1, spaceAfter=10)))
+        
+        # Tabla simple
+        data = [['PRODUCTO', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL']]
+        
+        for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
+            if cat_name in cats:
+                for prod in cats[cat_name]:
+                    data.append([
+                        prod['nombre'],
+                        str(prod['inv_ini']) if prod['inv_ini'] else '0',
+                        str(prod['entra']) if prod['entra'] else '0',
+                        str(prod['total']) if prod['total'] else '0',
+                        str(prod['ventas']) if prod['ventas'] else '0',
+                        str(prod['inv_final']) if prod['inv_final'] else '0'
+                    ])
+        
+        table = Table(data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ]))
+        
+        elements.append(table)
+        doc.build(elements)
+        buffer.seek(0)
+        
+        return StreamingResponse(buffer, media_type="application/pdf", 
+                                headers={"Content-Disposition": f"attachment; filename=inventario_{fecha}.pdf"})
+    except Exception as e:
+        print(f"ERROR PDF: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Error: {str(e)}")
 
 @app.get("/api/health")
 def health():
