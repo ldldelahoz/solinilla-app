@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python3
-"""Solinilla Inventory API"""
+"""Solinilla Inventory API - Versión Final Corregida"""
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -11,11 +11,11 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from io import BytesIO
 
-from reportlab.lib.pagesizes import letter, A4, landscape
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
+from reportlab.lib.units import inch, cm
 
 from src.db import init_db
 from src.auth import verify_password, create_access_token, decode_token
@@ -25,11 +25,12 @@ from src.inventory import (
     cerrar_inventario_dia, obtener_cierre_por_fecha
 )
 
-app = FastAPI(title="Solinilla Inventory API", version="2.0")
+app = FastAPI(title="Solinilla Inventory API", version="3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 templates = Jinja2Templates(directory="templates")
 security = HTTPBearer()
 
+# --- Modelos ---
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -46,6 +47,7 @@ class MovimientoCreate(BaseModel):
     cantidad: float
     motivo: Optional[str] = None
 
+# --- Auth ---
 def require_auth(auth: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     payload = decode_token(auth.credentials)
     if not payload:
@@ -64,6 +66,7 @@ async def startup_event():
     init_db()
     print("✅ Solinilla API iniciada")
 
+# --- Rutas HTML ---
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -72,6 +75,7 @@ def root(request: Request):
 def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
+# --- Login ---
 @app.post("/api/login")
 def login(data: LoginRequest):
     user = obtener_usuario_por_username(data.username)
@@ -80,6 +84,7 @@ def login(data: LoginRequest):
     token = create_access_token({"sub": user["username"], "rol": user["rol"]})
     return {"access_token": token, "token_type": "bearer", "user": {"username": user["username"], "rol": user["rol"]}}
 
+# --- Productos ---
 @app.get("/api/productos")
 def get_prods(user: dict = Depends(require_auth)):
     return {"productos": obtener_productos()}
@@ -94,6 +99,7 @@ def del_prod(pid: str, user: dict = Depends(require_auth)):
     ok, msg = eliminar_producto(pid)
     return {"msg": msg} if ok else HTTPException(400, msg)
 
+# --- Movimientos ---
 @app.get("/api/movimientos")
 def get_movs(fecha: Optional[str] = None, user: dict = Depends(require_auth)):
     fecha = fecha or datetime.now().date().isoformat()
@@ -104,6 +110,7 @@ def add_mov(m: MovimientoCreate, user: dict = Depends(require_auth)):
     ok, msg = registrar_movimiento(m.producto_id, m.tipo, m.cantidad, m.motivo)
     return {"msg": msg} if ok else HTTPException(400, msg)
 
+# --- Cierre ---
 @app.get("/api/cierre/{fecha}")
 def obtener_cierre_api(fecha: str, user: dict = Depends(require_auth)):
     return {"fecha": fecha, "productos": obtener_cierre_por_fecha(fecha)}
@@ -126,6 +133,9 @@ def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict 
     ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
     return {"msg": msg} if ok else HTTPException(400, msg)
 
+# --- Lógica de Reportes y PDF ---
+
+# Mapeo de categorías EXACTO para el reporte
 CATEGORIA_MAP = {
     "SODA HADSU": "BEBIDAS", "COCACOLAPET 250ML": "BEBIDAS", "GINGER DRY 300ML": "BEBIDAS",
     "COCA COLA PET 400": "BEBIDAS", "POSTOBON PET 400": "BEBIDAS", "COCA COLA ZERO 400": "BEBIDAS",
@@ -151,52 +161,103 @@ CATEGORIA_MAP = {
 def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: str) -> Dict[str, List[dict]]:
     cats = {"BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": []}
     for prod in productos:
-        cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
+        cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS") # Default a Bebidas si no encuentra
         cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
         inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
         entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
         ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
-        cats[cat].append({
-            'id': prod['id'], 'nombre': prod['nombre'], 'inv_ini': inv_ini, 'entra': entra,
-            'total': inv_ini + entra, 'ventas': ventas, 'inv_final': inv_ini + entra - ventas,
-            'bajas': 0, 'observaciones': ''
-        })
+        
+        # Formato limpio para el PDF
+        item = {
+            'nombre': prod['nombre'], 
+            'inv_ini': inv_ini if inv_ini != 0 else '', 
+            'entra': entra if entra != 0 else '',
+            'total': (inv_ini + entra) if (inv_ini + entra) != 0 else '',
+            'ventas': ventas if ventas != 0 else '',
+            'inv_final': (inv_ini + entra - ventas) if (inv_ini + entra - ventas) != 0 else '',
+            'bajas': '',
+            'observaciones': ''
+        }
+        cats[cat].append(item)
+    
     for cat in cats:
         cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
-
-@app.get("/api/reporte/imprimir", response_class=HTMLResponse)
-def print_view(request: Request, fecha: Optional[str] = Query(None), user: dict = Depends(check_url_token)):
-    fecha = fecha or datetime.now().date().isoformat()
-    productos = obtener_productos()
-    movimientos = obtener_movimientos_dia(fecha)
-    cats = calcular_inventario(productos, movimientos, fecha)
-    return templates.TemplateResponse("print_view.html", {
-        "request": request, "fecha": fecha,
-        "categorias": [{"nombre": c, "productos": p} for c, p in cats.items() if p]
-    })
 
 @app.get("/api/reporte/pdf")
 def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
     productos = obtener_productos()
     movimientos = obtener_movimientos_dia(fecha)
     cats = calcular_inventario(productos, movimientos, fecha)
+    
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.3*inch, rightMargin=0.3*inch)
-    elements, styles = [], getSampleStyleSheet()
-    elements.append(Paragraph("INVENTARIO RESTAURANTE", ParagraphStyle('T', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=5)))
-    elements.append(Paragraph(f"FECHA: {fecha}", ParagraphStyle('S', alignment=1, spaceAfter=12, fontSize=10)))
-    data = [['PRODUCTOS', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL', 'BAJAS', 'OBSERV.']]
-    for cat in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
-        for prod in cats.get(cat, []):
-            data.append([prod['nombre'], str(prod['inv_ini']), str(prod['entra']), str(prod['total']), str(prod['ventas']), str(prod['inv_final']), '', ''])
-    table = Table(data, colWidths=[2.3*inch, 0.65*inch, 0.65*inch, 0.65*inch, 0.65*inch, 0.85*inch, 0.55*inch, 0.9*inch])
-    table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey), ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 8), ('BOTTOMPADDING', (0, 0), (-1, 0), 6), ('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.beige]), ('FONTSIZE', (0, 1), (-1, -1), 7)]))
+    # Formato Horizontal (Landscape) para que quepa la tabla ancha
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=1*cm, leftMargin=1*cm, topMargin=1*cm, bottomMargin=1*cm)
+    elements = []
+    
+    # Título
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='CenterTitle', alignment=1, fontSize=14, fontName='Helvetica-Bold', spaceAfter=10))
+    elements.append(Paragraph(f"INVENTARIO RESTAURANTE SOLINILLA - {fecha}", styles['CenterTitle']))
+    
+    # Datos de la tabla
+    data = [['PRODUCTOS', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL', 'BAJAS', 'OBSERVACIONES']]
+    
+    # Definir anchos de columna proporcionales al ancho de la página
+    col_widths = [2.5*inch, 0.9*inch, 0.9*inch, 0.9*inch, 0.9*inch, 1*inch, 0.8*inch, 2*inch]
+    
+    for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
+        if cat_name in cats and cats[cat_name]:
+            # Fila de Categoría (Fondo Gris)
+            data.append([cat_name, '', '', '', '', '', '', ''])
+            
+            for prod in cats[cat_name]:
+                data.append([
+                    prod['nombre'],
+                    str(prod['inv_ini']),
+                    str(prod['entra']),
+                    str(prod['total']),
+                    str(prod['ventas']),
+                    str(prod['inv_final']),
+                    prod['bajas'],
+                    prod['observaciones']
+                ])
+    
+    # Crear tabla
+    table = Table(data, colWidths=col_widths)
+    style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'), # Alinear nombres a la izquierda
+    ])
+    
+    # Colorear filas de categorías
+    current_row = 1
+    for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
+        if cat_name in cats and cats[cat_name]:
+            len_cat = len(cats[cat_name])
+            # Fila de título de categoría
+            style.add('BACKGROUND', (0, current_row), (-1, current_row), colors.lightgrey)
+            style.add('FONTNAME', (0, current_row), (0, current_row), 'Helvetica-Bold')
+            style.add('SPAN', (0, current_row), (-1, current_row)) # Fusionar celdas para el título
+            style.add('ALIGN', (0, current_row), (-1, current_row), 'LEFT')
+            current_row += 1
+            current_row += len_cat # Saltar productos
+            
+    table.setStyle(style)
     elements.append(table)
+    
     doc.build(elements)
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=inventario_{fecha}.pdf"})
 
 @app.get("/api/health")
 def health():
-    return {"status": "alive", "app": "solinilla-api", "version": "2.0", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "alive"}

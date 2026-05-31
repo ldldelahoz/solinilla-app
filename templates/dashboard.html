@@ -6,301 +6,63 @@
     <title>Dashboard - Solinilla</title>
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --accent-color: #3498db;
-            --danger-color: #e74c3c;
-            --success-color: #27ae60;
-            --warning-color: #f39c12;
-            --background-color: #f8f9fa;
-            --white-color: #ffffff;
-            --text-color: #333333;
-            --shadow-color: rgba(0, 0, 0, 0.1);
+            --primary: #2c3e50; --accent: #3498db; --danger: #e74c3c; --success: #27ae60; 
+            --warning: #f39c12; --bg: #f8f9fa; --white: #ffffff; --text: #333;
         }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding-bottom: 60px; }
+        
+        header { background-color: var(--primary); color: var(--white); padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        header h1 { font-size: 1.2rem; }
+        .btn-header { background: transparent; border: 1px solid rgba(255,255,255,0.6); color: var(--white); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+        
+        .tabs { display: flex; background: var(--white); border-bottom: 1px solid #ddd; position: sticky; top: 56px; z-index: 90; }
+        .tab-btn { flex: 1; padding: 14px; text-align: center; cursor: pointer; border: none; background: none; font-weight: 500; color: #666; border-bottom: 3px solid transparent; }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; background: #f0f7ff; }
+        
+        .section { padding: 15px; display: none; }
+        .section.active { display: block; }
+        .card { background: var(--white); padding: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .card h3 { margin-bottom: 12px; color: var(--primary); font-size: 1rem; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        
+        input, select { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; color: white; margin-top: 5px; }
+        .btn-primary { background-color: var(--accent); }
+        .btn-success { background-color: var(--success); }
+        .btn-danger { background-color: var(--danger); }
+        
+        table { width: 100%; border-collapse: collapse; background: var(--white); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #f4f6f8; color: #444; font-weight: 600; }
+        
+        .stock-ok { color: var(--success); font-weight: 700; }
+        .stock-low { color: var(--danger); font-weight: 700; } /* ROJO PARA STOCK BAJO */
+        
+        .action-group { display: flex; gap: 6px; justify-content: center; }
+        .icon-btn { width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
+        .icon-add { background: var(--success); color: white; }
+        .icon-sub { background: var(--warning); color: white; }
+        .icon-del { background: var(--danger); color: white; }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            padding-bottom: 60px;
-            line-height: 1.5;
-        }
-
-        header {
-            background-color: var(--primary-color);
-            color: var(--white-color);
-            padding: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 5px var(--shadow-color);
-        }
-
-        header h1 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn-header {
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            color: var(--white-color);
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: background 0.2s;
-        }
-
-        .btn-header:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .alert-bar {
-            background-color: var(--warning-color);
-            color: #fff;
-            padding: 10px 15px;
-            margin: 10px;
-            border-radius: 8px;
-            font-weight: 500;
-            display: none;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 2px 4px var(--shadow-color);
-        }
-
-        .tabs {
-            display: flex;
-            background-color: var(--white-color);
-            border-bottom: 1px solid #ddd;
-            position: sticky;
-            top: 56px;
-            z-index: 90;
-        }
-
-        .tab-btn {
-            flex: 1;
-            padding: 14px;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            background: none;
-            font-weight: 500;
-            color: #666;
-            border-bottom: 3px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .tab-btn.active {
-            color: var(--accent-color);
-            border-bottom-color: var(--accent-color);
-            font-weight: 700;
-            background-color: #f0f7ff;
-        }
-
-        .section {
-            padding: 15px;
-            display: none;
-        }
-
-        .section.active {
-            display: block;
-        }
-
-        .card {
-            background-color: var(--white-color);
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px var(--shadow-color);
-            margin-bottom: 15px;
-        }
-
-        .card h3 {
-            margin-bottom: 12px;
-            color: var(--primary-color);
-            font-size: 1rem;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 8px;
-        }
-
-        .card.cierre {
-            border: 2px solid var(--danger-color);
-            background-color: #fff5f5;
-        }
-
-        .card.cierre h3 {
-            color: var(--danger-color);
-            border-bottom-color: var(--danger-color);
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 16px;
-            background-color: #fff;
-        }
-
-        input:focus, select:focus {
-            border-color: var(--accent-color);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
-        }
-
-        .btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            color: white;
-            margin-top: 5px;
-            transition: opacity 0.2s;
-        }
-
-        .btn:hover {
-            opacity: 0.9;
-        }
-
-        .btn-primary {
-            background-color: var(--accent-color);
-        }
-
-        .btn-success {
-            background-color: var(--success-color);
-        }
-
-        .btn-danger {
-            background-color: var(--danger-color);
-        }
-
-        .btn-warning {
-            background-color: var(--warning-color);
-            color: #000;
-        }
-
-        .action-group {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .icon-btn {
-            width: 34px;
-            height: 34px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1rem;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.15s;
-        }
-
-        .icon-btn:hover {
-            transform: scale(1.1);
-        }
-
-        .icon-add {
-            background-color: var(--success-color);
-            color: white;
-        }
-
-        .icon-sub {
-            background-color: var(--warning-color);
-            color: white;
-        }
-
-        .icon-del {
-            background-color: var(--danger-color);
-            color: white;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: var(--white-color);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px var(--shadow-color);
-            font-size: 0.9rem;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-
-        th {
-            background-color: #f4f6f8;
-            color: #444;
-            font-weight: 600;
-        }
-
-        .stock-ok {
-            color: var(--success-color);
-            font-weight: 700;
-        }
-
-        .stock-low {
-            color: var(--danger-color);
-            font-weight: 700;
-        }
+        /* Estilo para opciones del select */
+        option.stock-available { color: var(--success); font-weight: bold; }
+        option.stock-empty { color: var(--danger); }
 
         @media (max-width: 600px) {
-            .action-group {
-                flex-direction: column;
-                gap: 4px;
-            }
-
-            .icon-btn {
-                width: 30px;
-                height: 30px;
-                font-size: 0.9rem;
-            }
-
-            th, td {
-                padding: 10px 6px;
-                font-size: 0.85rem;
-            }
-
-            .card {
-                padding: 12px;
-            }
+            .action-group { flex-direction: column; gap: 4px; }
+            .icon-btn { width: 28px; height: 28px; font-size: 0.9rem; }
+            th, td { padding: 10px 6px; font-size: 0.85rem; }
         }
     </style>
 </head>
 <body>
     <header>
         <h1>🍽️ Solinilla</h1>
-        <div class="header-actions">
+        <div style="display:flex; gap:10px;">
             <button class="btn-header" onclick="openPrintView()">🖨️ Imprimir</button>
             <button class="btn-header" onclick="logout()">Salir</button>
         </div>
     </header>
-
-    <div id="stock-alert" class="alert-bar"></div>
 
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('inv')">📦 Inventario</button>
@@ -308,6 +70,7 @@
         <button class="tab-btn" onclick="switchTab('rep')">📊 Reportes</button>
     </div>
 
+    <!-- SECCIÓN INVENTARIO -->
     <div id="inv" class="section active">
         <div class="card">
             <h3>🔍 Buscar Producto</h3>
@@ -326,71 +89,56 @@
                         <th style="text-align: center;">Acciones</th>
                     </tr>
                 </thead>
-                <tbody>
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
     </div>
 
+    <!-- SECCIÓN MOVIMIENTOS -->
     <div id="mov" class="section">
         <div class="card">
             <h3>📝 Registrar Movimiento</h3>
-            
-            <label style="font-size: 0.9rem; color: #666;">Producto:</label>
+            <label>Producto:</label>
             <select id="mov-product-select" onchange="document.getElementById('mov-product-id').value = this.value">
                 <option value="">-- Selecciona producto --</option>
             </select>
             <input type="hidden" id="mov-product-id">
             
-            <label style="font-size: 0.9rem; color: #666;">Cantidad:</label>
+            <label>Cantidad:</label>
             <input type="number" id="mov-qty" placeholder="Cantidad" min="1" step="0.01">
             
-            <label style="font-size: 0.9rem; color: #666;">Tipo:</label>
+            <label>Tipo:</label>
             <select id="mov-type">
-                <option value="entrada">🟢 Entrada (Compra/Reposición)</option>
-                <option value="salida">🔴 Salida (Venta/Consumo)</option>
+                <option value="entrada">🟢 Entrada</option>
+                <option value="salida"> Salida</option>
             </select>
             
-            <label style="font-size: 0.9rem; color: #666;">Motivo (opcional):</label>
-            <input type="text" id="mov-reason" placeholder="Ej: Proveedor X, Factura #123">
-            
+            <label>Motivo:</label>
+            <input type="text" id="mov-reason" placeholder="Ej: Proveedor X">
             <button class="btn btn-success" onclick="registerMovement()">✅ Registrar</button>
         </div>
-
         <div class="card">
             <h3>📅 Movimientos de Hoy</h3>
             <table id="movements-table">
-                <thead>
-                    <tr>
-                        <th>Tipo</th>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Motivo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                </tbody>
+                <thead><tr><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th></tr></thead>
+                <tbody></tbody>
             </table>
         </div>
     </div>
 
+    <!-- SECCIÓN REPORTES -->
     <div id="rep" class="section">
         <div class="card">
             <h3>📥 Generar Reporte PDF</h3>
-            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Selecciona la fecha:</label>
+            <label>Fecha:</label>
             <input type="date" id="report-date">
-            <button class="btn btn-primary" onclick="downloadPDF()">📄 Descargar PDF</button>
+            <button class="btn btn-primary" onclick="downloadPDF()"> Descargar PDF</button>
         </div>
-
-        <div class="card cierre">
-            <h3>🔒 Cerrar Inventario del Día</h3>
-            <p style="color: #666; font-size: 0.9rem; margin-bottom: 10px;">
-                Esta acción guarda el estado final del inventario de hoy (INV FINAL) 
-                para que sea automáticamente el Inventario Inicial (INV INI) de mañana.
-            </p>
-            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Fecha a cerrar:</label>
+        <div class="card" style="border: 2px solid var(--danger); background: #fff5f5;">
+            <h3 style="color: var(--danger);">🔒 Cerrar Inventario</h3>
+            <p style="font-size: 0.9rem; margin-bottom: 10px;">Guarda el estado actual como cierre del día.</p>
             <input type="date" id="cierre-date">
-            <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR INVENTARIO</button>
+            <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR DÍA</button>
         </div>
     </div>
 
@@ -399,9 +147,7 @@
         let token = localStorage.getItem('token');
         let productsData = [];
 
-        if (!token) {
-            window.location.href = '/';
-        }
+        if (!token) window.location.href = '/';
 
         function switchTab(tabId) {
             document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
@@ -412,19 +158,12 @@
             if (tabId === 'mov') loadMovements();
         }
 
-        function logout() {
-            localStorage.clear();
-            window.location.href = '/';
-        }
+        function logout() { localStorage.clear(); window.location.href = '/'; }
 
         async function apiCall(url, method = 'GET', body = null) {
             const headers = { 'Authorization': 'Bearer ' + token };
             if (body) headers['Content-Type'] = 'application/json';
-            const response = await fetch(url, { 
-                method: method, 
-                headers: headers, 
-                body: body ? JSON.stringify(body) : null 
-            });
+            const response = await fetch(url, { method: method, headers: headers, body: body ? JSON.stringify(body) : null });
             if (response.status === 401) logout();
             return response.json();
         }
@@ -432,21 +171,21 @@
         async function loadInventory() {
             const data = await apiCall('/api/productos');
             productsData = data.productos || [];
+            
             const tbody = document.querySelector('#inventory-table tbody');
             const searchSelect = document.getElementById('search-select');
             const movSelect = document.getElementById('mov-product-select');
+            
             tbody.innerHTML = '';
             searchSelect.innerHTML = '<option value="">-- Selecciona un producto --</option>';
             movSelect.innerHTML = '<option value="">-- Selecciona producto --</option>';
-            let lowStockCount = 0;
-            let lowStockNames = [];
 
             productsData.forEach(p => {
-                const stockClass = p.stock < 10 ? 'stock-low' : 'stock-ok';
-                if (p.stock < 10) {
-                    lowStockCount++;
-                    lowStockNames.push(`${p.nombre} (${p.stock})`);
-                }
+                // Lógica para ROJO si stock es bajo (< 10)
+                const isLow = p.stock < 10;
+                const stockClass = isLow ? 'stock-low' : 'stock-ok';
+                
+                // Crear fila en tabla
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${p.id}</td>
@@ -454,25 +193,20 @@
                     <td class="${stockClass}">${p.stock}</td>
                     <td>
                         <div class="action-group">
-                            <button class="icon-btn icon-add" onclick="quickAction('${p.id}', 'entrada')" title="Agregar Stock">➕</button>
-                            <button class="icon-btn icon-sub" onclick="quickAction('${p.id}', 'salida')" title="Descontar Stock">➖</button>
-                            <button class="icon-btn icon-del" onclick="deleteProduct('${p.id}')" title="Eliminar Producto">🗑️</button>
+                            <button class="icon-btn icon-add" onclick="quickAction('${p.id}', 'entrada')">➕</button>
+                            <button class="icon-btn icon-sub" onclick="quickAction('${p.id}', 'salida')">➖</button>
+                            <button class="icon-btn icon-del" onclick="deleteProduct('${p.id}')">🗑️</button>
                         </div>
-                    </td>
-                `;
+                    </td>`;
                 tbody.appendChild(tr);
-                const optionHTML = `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`;
+
+                // Lógica para VERDE/ROJO en Select (Lista desplegable)
+                const optionHTML = `<option value="${p.id}" class="${p.stock > 0 ? 'stock-available' : 'stock-empty'}">
+                    ${p.nombre} (Stock: ${p.stock})
+                </option>`;
                 searchSelect.innerHTML += optionHTML;
                 movSelect.innerHTML += optionHTML;
             });
-
-            const alertBox = document.getElementById('stock-alert');
-            if (lowStockCount > 0) {
-                alertBox.style.display = 'flex';
-                alertBox.innerHTML = `⚠️ <strong>${lowStockCount} productos con stock bajo:</strong> ${lowStockNames.join(', ')}`;
-            } else {
-                alertBox.style.display = 'none';
-            }
         }
 
         function highlightProduct() {
@@ -488,41 +222,31 @@
             });
         }
 
-        function quickAction(productId, type) {
-            document.getElementById('mov-product-id').value = productId;
-            document.getElementById('mov-product-select').value = productId;
+        function quickAction(id, type) {
+            document.getElementById('mov-product-id').value = id;
+            document.getElementById('mov-product-select').value = id;
             document.getElementById('mov-type').value = type;
             document.getElementById('mov-qty').value = '1';
-            document.getElementById('mov-qty').focus();
             switchTab('mov');
         }
 
         async function deleteProduct(id) {
-            if (!confirm('¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.')) return;
+            if (!confirm('¿Eliminar producto?')) return;
             await apiCall(`/api/productos/${id}`, 'DELETE');
             loadInventory();
         }
 
         async function registerMovement() {
-            const productId = document.getElementById('mov-product-id').value || document.getElementById('mov-product-select').value;
+            const prodId = document.getElementById('mov-product-id').value || document.getElementById('mov-product-select').value;
             const qty = parseFloat(document.getElementById('mov-qty').value);
             const type = document.getElementById('mov-type').value;
             const reason = document.getElementById('mov-reason').value;
 
-            if (!productId || !qty || qty <= 0) {
-                return alert('Por favor selecciona un producto e ingresa una cantidad válida.');
-            }
+            if (!prodId || !qty || qty <= 0) return alert('Completa los datos');
 
-            const result = await apiCall('/api/movimientos', 'POST', {
-                producto_id: productId,
-                tipo: type,
-                cantidad: qty,
-                motivo: reason
-            });
-
-            alert(result.msg || 'Movimiento registrado');
+            const res = await apiCall('/api/movimientos', 'POST', { producto_id: prodId, tipo: type, cantidad: qty, motivo: reason });
+            alert(res.msg);
             document.getElementById('mov-qty').value = '';
-            document.getElementById('mov-reason').value = '';
             loadMovements();
             loadInventory();
         }
@@ -532,47 +256,33 @@
             const data = await apiCall(`/api/movimientos?fecha=${today}`);
             const tbody = document.querySelector('#movements-table tbody');
             tbody.innerHTML = '';
-
             (data.movimientos || []).forEach(m => {
                 const color = m.tipo === 'entrada' ? 'green' : 'red';
-                const icon = m.tipo === 'entrada' ? '🟢' : '🔴';
-                const prodName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
-                tbody.innerHTML += `
-                    <tr>
-                        <td style="color:${color}; font-weight:600;">${icon} ${m.tipo}</td>
-                        <td>${prodName}</td>
-                        <td>${m.cantidad}</td>
-                        <td>${m.motivo || '-'}</td>
-                    </tr>
-                `;
+                const icon = m.tipo === 'entrada' ? '🟢' : '';
+                const pName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
+                tbody.innerHTML += `<tr><td style="color:${color}">${icon} ${m.tipo}</td><td>${pName}</td><td>${m.cantidad}</td><td>${m.motivo || '-'}</td></tr>`;
             });
         }
 
         async function openPrintView() {
             const fecha = new Date().toISOString().split('T')[0];
             const url = `${API_BASE}/api/reporte/imprimir?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
+            window.open(url, '_blank');
         }
 
         async function downloadPDF() {
             const fecha = document.getElementById('report-date').value;
-            if (!fecha) return alert('Por favor selecciona una fecha.');
+            if (!fecha) return alert('Selecciona fecha');
             const url = `${API_BASE}/api/reporte/pdf?fecha=${fecha}&token=${encodeURIComponent(token)}`;
             window.location.href = url;
         }
 
         async function cerrarInventario() {
             const fecha = document.getElementById('cierre-date').value;
-            if (!fecha) return alert('Por favor selecciona una fecha para el cierre.');
-            if (!confirm(`¿Estás seguro de CERRAR el inventario del día ${fecha}?\n\nEsto guardará el estado actual (INV FINAL) y lo usará como INV INI para el día siguiente.\n\nNo podrás modificar este cierre después.`)) {
-                return;
-            }
-            try {
-                const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
-                alert(result.msg || 'Inventario cerrado exitosamente');
-            } catch (error) {
-                alert('Error al cerrar inventario: ' + error.message);
-            }
+            if (!fecha) return alert('Selecciona fecha');
+            if (!confirm('¿Cerrar inventario?')) return;
+            const res = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
+            alert(res.msg);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
