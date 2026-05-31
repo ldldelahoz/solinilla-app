@@ -1,672 +1,202 @@
-﻿<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dashboard - Solinilla</title>
-    <style>
-        /* =========================================
-           VARIABLES DE COLORES Y CONFIGURACIÓN
-           ========================================= */
-        :root {
-            --primary-color: #2c3e50;
-            --accent-color: #3498db;
-            --danger-color: #e74c3c;
-            --success-color: #27ae60;
-            --warning-color: #f39c12;
-            --background-color: #f8f9fa;
-            --white-color: #ffffff;
-            --text-color: #333333;
-            --shadow-color: rgba(0, 0, 0, 0.1);
-        }
-
-        /* =========================================
-           ESTILOS GENERALES (RESET Y BASE)
-           ========================================= */
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            padding-bottom: 60px;
-            line-height: 1.5;
-        }
-
-        /* =========================================
-           ENCABEZADO (HEADER)
-           ========================================= */
-        header {
-            background-color: var(--primary-color);
-            color: var(--white-color);
-            padding: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 5px var(--shadow-color);
-        }
-
-        header h1 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn-header {
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            color: var(--white-color);
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: background 0.2s;
-        }
-
-        .btn-header:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        /* =========================================
-           ALERTAS
-           ========================================= */
-        .alert-bar {
-            background-color: var(--warning-color);
-            color: #fff;
-            padding: 10px 15px;
-            margin: 10px;
-            border-radius: 8px;
-            font-weight: 500;
-            display: none;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 2px 4px var(--shadow-color);
-        }
-
-        /* =========================================
-           PESTAÑAS DE NAVEGACIÓN (TABS)
-           ========================================= */
-        .tabs {
-            display: flex;
-            background-color: var(--white-color);
-            border-bottom: 1px solid #ddd;
-            position: sticky;
-            top: 56px;
-            z-index: 90;
-        }
-
-        .tab-btn {
-            flex: 1;
-            padding: 14px;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            background: none;
-            font-weight: 500;
-            color: #666;
-            border-bottom: 3px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .tab-btn.active {
-            color: var(--accent-color);
-            border-bottom-color: var(--accent-color);
-            font-weight: 700;
-            background-color: #f0f7ff;
-        }
-
-        /* =========================================
-           CONTENIDO Y SECCIONES
-           ========================================= */
-        .section {
-            padding: 15px;
-            display: none;
-        }
-
-        .section.active {
-            display: block;
-        }
-
-        /* =========================================
-           TARJETAS (CARDS)
-           ========================================= */
-        .card {
-            background-color: var(--white-color);
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px var(--shadow-color);
-            margin-bottom: 15px;
-        }
-
-        .card h3 {
-            margin-bottom: 12px;
-            color: var(--primary-color);
-            font-size: 1rem;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 8px;
-        }
-
-        .card.cierre {
-            border: 2px solid var(--danger-color);
-            background-color: #fff5f5;
-        }
-        .card.cierre h3 {
-            color: var(--danger-color);
-            border-bottom-color: var(--danger-color);
-        }
-
-        /* =========================================
-           FORMULARIOS (INPUTS Y SELECTS)
-           ========================================= */
-        input, select {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 16px;
-            background-color: #fff;
-        }
-
-        input:focus, select:focus {
-            border-color: var(--accent-color);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
-        }
-
-        /* =========================================
-           BOTONES PRINCIPALES
-           ========================================= */
-        .btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            color: white;
-            margin-top: 5px;
-            transition: opacity 0.2s;
-        }
-
-        .btn:hover { opacity: 0.9; }
-
-        .btn-primary { background-color: var(--accent-color); }
-        .btn-success { background-color: var(--success-color); }
-        .btn-danger  { background-color: var(--danger-color); }
-        .btn-warning { background-color: var(--warning-color); color: #000; }
-
-        /* =========================================
-           GRUPO DE ACCIONES (ICONOS EN TABLA)
-           ========================================= */
-        .action-group {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .icon-btn {
-            width: 34px;
-            height: 34px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1rem;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.15s;
-        }
-
-        .icon-btn:hover { transform: scale(1.1); }
-        .icon-add { background-color: var(--success-color); color: white; }
-        .icon-sub { background-color: var(--warning-color); color: white; }
-        .icon-del { background-color: var(--danger-color); color: white; }
-
-        /* =========================================
-           TABLAS
-           ========================================= */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: var(--white-color);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px var(--shadow-color);
-            font-size: 0.9rem;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-
-        th {
-            background-color: #f4f6f8;
-            color: #444;
-            font-weight: 600;
-        }
-
-        .stock-ok { color: var(--success-color); font-weight: 700; }
-        .stock-low { color: var(--danger-color); font-weight: 700; }
-
-        /* =========================================
-           RESPONSIVE (MÓVILES)
-           ========================================= */
-        @media (max-width: 600px) {
-            .action-group { flex-direction: column; gap: 4px; }
-            .icon-btn { width: 30px; height: 30px; font-size: 0.9rem; }
-            th, td { padding: 10px 6px; font-size: 0.85rem; }
-            .card { padding: 12px; }
-        }
-    </style>
-</head>
-<body>
-
-    <!-- ENCABEZADO SUPERIOR -->
-    <header>
-        <h1>🍽️ Solinilla</h1>
-        <div class="header-actions">
-            <button class="btn-header" onclick="openPrintView()">🖨️ Imprimir</button>
-            <button class="btn-header" onclick="logout()">Salir</button>
-        </div>
-    </header>
-
-    <!-- BARRA DE ALERTAS (Stock bajo) -->
-    <div id="stock-alert" class="alert-bar"></div>
-
-    <!-- NAVEGACIÓN POR PESTAÑAS -->
-    <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('inv')">📦 Inventario</button>
-        <button class="tab-btn" onclick="switchTab('mov')">🔄 Movimientos</button>
-        <button class="tab-btn" onclick="switchTab('rep')">📊 Reportes</button>
-    </div>
-
-    <!-- ==========================================
-         SECCIÓN 1: INVENTARIO
-         ========================================== -->
-    <div id="inv" class="section active">
-        <!-- Buscador Desplegable -->
-        <div class="card">
-            <h3>🔍 Buscar Producto</h3>
-            <select id="search-select" onchange="highlightProduct()">
-                <option value="">-- Selecciona un producto --</option>
-            </select>
-        </div>
-
-        <!-- Tabla de Productos -->
-        <div class="card" style="padding: 0; overflow-x: auto;">
-            <table id="inventory-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Nombre</th>
-                        <th>Stock</th>
-                        <th style="text-align: center;">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Se llena dinámicamente con JS -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- ==========================================
-         SECCIÓN 2: MOVIMIENTOS
-         ========================================== -->
-    <div id="mov" class="section">
-        <!-- Formulario de Movimiento -->
-        <div class="card">
-            <h3>📝 Registrar Movimiento</h3>
-            
-            <label style="font-size: 0.9rem; color: #666;">Producto:</label>
-            <select id="mov-product-select" onchange="document.getElementById('mov-product-id').value = this.value">
-                <option value="">-- Selecciona producto --</option>
-            </select>
-            <input type="hidden" id="mov-product-id">
-            
-            <label style="font-size: 0.9rem; color: #666;">Cantidad:</label>
-            <input type="number" id="mov-qty" placeholder="Cantidad" min="1" step="0.01">
-            
-            <label style="font-size: 0.9rem; color: #666;">Tipo:</label>
-            <select id="mov-type">
-                <option value="entrada">🟢 Entrada (Compra/Reposición)</option>
-                <option value="salida">🔴 Salida (Venta/Consumo)</option>
-            </select>
-            
-            <label style="font-size: 0.9rem; color: #666;">Motivo (opcional):</label>
-            <input type="text" id="mov-reason" placeholder="Ej: Proveedor X, Factura #123">
-            
-            <button class="btn btn-success" onclick="registerMovement()">✅ Registrar</button>
-        </div>
-
-        <!-- Historial del Día -->
-        <div class="card">
-            <h3>📅 Movimientos de Hoy</h3>
-            <table id="movements-table">
-                <thead>
-                    <tr>
-                        <th>Tipo</th>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Motivo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Se llena dinámicamente con JS -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- ==========================================
-         SECCIÓN 3: REPORTES Y CIERRE
-         ========================================== -->
-    <div id="rep" class="section">
-        <!-- Generador de PDF -->
-        <div class="card">
-            <h3>📥 Generar Reporte PDF</h3>
-            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Selecciona la fecha:</label>
-            <input type="date" id="report-date">
-            <button class="btn btn-primary" onclick="downloadPDF()">📄 Descargar PDF</button>
-        </div>
-
-        <!-- Cierre de Inventario -->
-        <div class="card cierre">
-            <h3>🔒 Cerrar Inventario del Día</h3>
-            <p style="color: #666; font-size: 0.9rem; margin-bottom: 10px;">
-                Esta acción guarda el estado final del inventario de hoy (INV FINAL) 
-                para que sea automáticamente el Inventario Inicial (INV INI) de mañana.
-            </p>
-            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Fecha a cerrar:</label>
-            <input type="date" id="cierre-date">
-            <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR INVENTARIO</button>
-        </div>
-    </div>
-
-    <!-- ==========================================
-         JAVASCRIPT (LÓGICA)
-         ========================================== -->
-    <script>
-        // Configuración base
-        const API_BASE = '';
-        let token = localStorage.getItem('token');
-        let productsData = [];
-
-        // Redirigir si no hay sesión activa
-        if (!token) {
-            window.location.href = '/';
-        }
-
-        /**
-         * Cambia entre pestañas del dashboard
-         */
-        function switchTab(tabId) {
-            // Ocultar todas las secciones
-            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            
-            // Mostrar la seleccionada
-            document.getElementById(tabId).classList.add('active');
-            event.target.classList.add('active');
-            
-            // Cargar datos específicos
-            if (tabId === 'inv') loadInventory();
-            if (tabId === 'mov') loadMovements();
-        }
-
-        /**
-         * Cierra sesión y borra token
-         */
-        function logout() {
-            localStorage.clear();
-            window.location.href = '/';
-        }
-
-        /**
-         * Función genérica para llamadas a la API
-         */
-        async function apiCall(url, method = 'GET', body = null) {
-            const headers = { 'Authorization': 'Bearer ' + token };
-            if (body) headers['Content-Type'] = 'application/json';
-            
-            const response = await fetch(url, { 
-                method: method, 
-                headers: headers, 
-                body: body ? JSON.stringify(body) : null 
-            });
-            
-            if (response.status === 401) logout();
-            return response.json();
-        }
-
-        // ==========================================
-        // LÓGICA DE INVENTARIO
-        // ==========================================
-
-        /**
-         * Carga la lista de productos y actualiza la tabla
-         */
-        async function loadInventory() {
-            const data = await apiCall('/api/productos');
-            productsData = data.productos || [];
-            
-            const tbody = document.querySelector('#inventory-table tbody');
-            const searchSelect = document.getElementById('search-select');
-            const movSelect = document.getElementById('mov-product-select');
-            
-            tbody.innerHTML = '';
-            searchSelect.innerHTML = '<option value="">-- Selecciona un producto --</option>';
-            movSelect.innerHTML = '<option value="">-- Selecciona producto --</option>';
-            
-            let lowStockCount = 0;
-            let lowStockNames = [];
-
-            productsData.forEach(p => {
-                // Determinar clase de stock
-                const stockClass = p.stock < 10 ? 'stock-low' : 'stock-ok';
-                
-                // Alerta de stock bajo
-                if (p.stock < 10) {
-                    lowStockCount++;
-                    lowStockNames.push(`${p.nombre} (${p.stock})`);
-                }
-
-                // Crear fila de tabla
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${p.id}</td>
-                    <td>${p.nombre}</td>
-                    <td class="${stockClass}">${p.stock}</td>
-                    <td>
-                        <div class="action-group">
-                            <button class="icon-btn icon-add" onclick="quickAction('${p.id}', 'entrada')" title="Agregar Stock">➕</button>
-                            <button class="icon-btn icon-sub" onclick="quickAction('${p.id}', 'salida')" title="Descontar Stock">➖</button>
-                            <button class="icon-btn icon-del" onclick="deleteProduct('${p.id}')" title="Eliminar Producto">🗑️</button>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-
-                // Llenar selects de búsqueda y movimientos
-                const optionHTML = `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`;
-                searchSelect.innerHTML += optionHTML;
-                movSelect.innerHTML += optionHTML;
-            });
-
-            // Actualizar barra de alerta
-            const alertBox = document.getElementById('stock-alert');
-            if (lowStockCount > 0) {
-                alertBox.style.display = 'flex';
-                alertBox.innerHTML = `⚠️ <strong>${lowStockCount} productos con stock bajo:</strong> ${lowStockNames.join(', ')}`;
-            } else {
-                alertBox.style.display = 'none';
-            }
-        }
-
-        /**
-         * Resalta un producto en la tabla al buscarlo
-         */
-        function highlightProduct() {
-            const selectedId = document.getElementById('search-select').value;
-            if (!selectedId) return;
-
-            const rows = document.querySelectorAll('#inventory-table tbody tr');
-            rows.forEach(row => {
-                if (row.cells[0].textContent === selectedId) {
-                    row.style.backgroundColor = '#fff3cd';
-                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setTimeout(() => { row.style.backgroundColor = ''; }, 2000);
-                }
-            });
-        }
-
-        /**
-         * Pre-llena el formulario de movimiento para acción rápida
-         */
-        function quickAction(productId, type) {
-            document.getElementById('mov-product-id').value = productId;
-            document.getElementById('mov-product-select').value = productId;
-            document.getElementById('mov-type').value = type;
-            document.getElementById('mov-qty').value = '1';
-            document.getElementById('mov-qty').focus();
-            switchTab('mov');
-        }
-
-        /**
-         * Elimina un producto
-         */
-        async function deleteProduct(id) {
-            if (!confirm('¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.')) return;
-            await apiCall(`/api/productos/${id}`, 'DELETE');
-            loadInventory();
-        }
-
-        // ==========================================
-        // LÓGICA DE MOVIMIENTOS
-        // ==========================================
-
-        /**
-         * Registra una entrada o salida
-         */
-        async function registerMovement() {
-            const productId = document.getElementById('mov-product-id').value || document.getElementById('mov-product-select').value;
-            const qty = parseFloat(document.getElementById('mov-qty').value);
-            const type = document.getElementById('mov-type').value;
-            const reason = document.getElementById('mov-reason').value;
-
-            if (!productId || !qty || qty <= 0) {
-                return alert('Por favor selecciona un producto e ingresa una cantidad válida.');
-            }
-
-            const result = await apiCall('/api/movimientos', 'POST', {
-                producto_id: productId,
-                tipo: type,
-                cantidad: qty,
-                motivo: reason
-            });
-
-            alert(result.msg || 'Movimiento registrado');
-            
-            // Limpiar formulario
-            document.getElementById('mov-qty').value = '';
-            document.getElementById('mov-reason').value = '';
-            
-            // Recargar datos
-            loadMovements();
-            loadInventory();
-        }
-
-        /**
-         * Carga el historial de movimientos del día
-         */
-        async function loadMovements() {
-            const today = new Date().toISOString().split('T')[0];
-            const data = await apiCall(`/api/movimientos?fecha=${today}`);
-            const tbody = document.querySelector('#movements-table tbody');
-            tbody.innerHTML = '';
-
-            (data.movimientos || []).forEach(m => {
-                const color = m.tipo === 'entrada' ? 'green' : 'red';
-                const icon = m.tipo === 'entrada' ? '🟢' : '🔴';
-                const prodName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
-                
-                tbody.innerHTML += `
-                    <tr>
-                        <td style="color:${color}; font-weight:600;">${icon} ${m.tipo}</td>
-                        <td>${prodName}</td>
-                        <td>${m.cantidad}</td>
-                        <td>${m.motivo || '-'}</td>
-                    </tr>
-                `;
-            });
-        }
-
-        // ==========================================
-        // LÓGICA DE REPORTES Y CIERRE
-        // ==========================================
-
-        /**
-         * Abre la vista de impresión en nueva ventana
-         */
-        async function openPrintView() {
-            const fecha = new Date().toISOString().split('T')[0];
-            const url = `${API_BASE}/api/reporte/imprimir?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
-        }
-
-        /**
-         * Descarga el PDF directamente
-         */
-        async function downloadPDF() {
-            const fecha = document.getElementById('report-date').value;
-            if (!fecha) return alert('Por favor selecciona una fecha.');
-            
-            const url = `${API_BASE}/api/reporte/pdf?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.location.href = url;
-        }
-
-        /**
-         * NUEVA FUNCIÓN: Cierra el inventario del día
-         */
-        async function cerrarInventario() {
-            const fecha = document.getElementById('cierre-date').value;
-            if (!fecha) return alert('Por favor selecciona una fecha para el cierre.');
-            
-            if (!confirm(`¿Estás seguro de CERRAR el inventario del día ${fecha}?\n\nEsto guardará el estado actual (INV FINAL) y lo usará como INV INI para el día siguiente.\n\nNo podrás modificar este cierre después.`)) {
-                return;
-            }
-
-            try {
-                const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
-                alert(result.msg || 'Inventario cerrado exitosamente');
-            } catch (error) {
-                alert('Error al cerrar inventario: ' + error.message);
-            }
-        }
-
-        // Inicialización al cargar la página
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('report-date').valueAsDate = new Date();
-            document.getElementById('cierre-date').valueAsDate = new Date();
-            loadInventory();
-        });
-    </script>
-</body>
-</html>
+﻿#!/usr/bin/env python3
+"""Solinilla Inventory API"""
+
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from io import BytesIO
+
+from reportlab.lib.pagesizes import letter, A4, landscape
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+
+from src.db import init_db
+from src.auth import verify_password, create_access_token, decode_token
+from src.inventory import (
+    obtener_usuario_por_username, obtener_productos, crear_producto, eliminar_producto,
+    registrar_movimiento, obtener_movimientos_dia, obtener_cierre_anterior,
+    cerrar_inventario_dia, obtener_cierre_por_fecha
+)
+
+app = FastAPI(title="Solinilla Inventory API", version="2.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+templates = Jinja2Templates(directory="templates")
+security = HTTPBearer()
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class ProductoCreate(BaseModel):
+    id: str
+    nombre: str
+    stock: float = 0.0
+    fecha_vencimiento: Optional[str] = None
+
+class MovimientoCreate(BaseModel):
+    producto_id: str
+    tipo: str
+    cantidad: float
+    motivo: Optional[str] = None
+
+def require_auth(auth: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    payload = decode_token(auth.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="No autorizado", headers={"WWW-Authenticate": "Bearer"})
+    return payload
+
+def check_url_token(token: Optional[str] = Query(None), authorization: Optional[str] = None) -> dict:
+    auth_token = authorization.replace("Bearer ", "").strip() if authorization else (token.strip() if token else None)
+    user = decode_token(auth_token) if auth_token else None
+    if not user:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    return user
+
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    print("✅ Solinilla API iniciada")
+
+@app.get("/", response_class=HTMLResponse)
+def root(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.post("/api/login")
+def login(data: LoginRequest):
+    user = obtener_usuario_por_username(data.username)
+    if not user or not verify_password(data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas", headers={"WWW-Authenticate": "Bearer"})
+    token = create_access_token({"sub": user["username"], "rol": user["rol"]})
+    return {"access_token": token, "token_type": "bearer", "user": {"username": user["username"], "rol": user["rol"]}}
+
+@app.get("/api/productos")
+def get_prods(user: dict = Depends(require_auth)):
+    return {"productos": obtener_productos()}
+
+@app.post("/api/productos")
+def add_prod(p: ProductoCreate, user: dict = Depends(require_auth)):
+    ok, msg = crear_producto(p.id, p.nombre, p.stock, p.fecha_vencimiento)
+    return {"msg": msg} if ok else HTTPException(400, msg)
+
+@app.delete("/api/productos/{pid}")
+def del_prod(pid: str, user: dict = Depends(require_auth)):
+    ok, msg = eliminar_producto(pid)
+    return {"msg": msg} if ok else HTTPException(400, msg)
+
+@app.get("/api/movimientos")
+def get_movs(fecha: Optional[str] = None, user: dict = Depends(require_auth)):
+    fecha = fecha or datetime.now().date().isoformat()
+    return {"movimientos": obtener_movimientos_dia(fecha)}
+
+@app.post("/api/movimientos")
+def add_mov(m: MovimientoCreate, user: dict = Depends(require_auth)):
+    ok, msg = registrar_movimiento(m.producto_id, m.tipo, m.cantidad, m.motivo)
+    return {"msg": msg} if ok else HTTPException(400, msg)
+
+@app.get("/api/cierre/{fecha}")
+def obtener_cierre_api(fecha: str, user: dict = Depends(require_auth)):
+    return {"fecha": fecha, "productos": obtener_cierre_por_fecha(fecha)}
+
+@app.post("/api/cierre")
+def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict = Depends(require_auth)):
+    productos = obtener_productos()
+    movimientos = obtener_movimientos_dia(fecha)
+    productos_con_cierre = []
+    for prod in productos:
+        cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
+        inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
+        entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
+        ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
+        inv_final = inv_ini + entra - ventas
+        productos_con_cierre.append({
+            'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra,
+            'ventas': ventas, 'bajas': 0, 'inv_final': inv_final, 'observaciones': ''
+        })
+    ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
+    return {"msg": msg} if ok else HTTPException(400, msg)
+
+CATEGORIA_MAP = {
+    "SODA HADSU": "BEBIDAS", "COCACOLAPET 250ML": "BEBIDAS", "GINGER DRY 300ML": "BEBIDAS",
+    "COCA COLA PET 400": "BEBIDAS", "POSTOBON PET 400": "BEBIDAS", "COCA COLA ZERO 400": "BEBIDAS",
+    "GATORADE": "BEBIDAS", "CERVEZA AGUILA LIGHT": "BEBIDAS", "CERVEZA AGUILA NEGRA": "BEBIDAS",
+    "CERVEZA CLUB COLOMBIA": "BEBIDAS", "CERVEZA STELLA": "BEBIDAS", "AGUA PET 600": "BEBIDAS",
+    "TE HATSU 500 ML": "BEBIDAS", "CERVEZA CORONA 330ML": "BEBIDAS", "SODA SCHWEPPERS": "BEBIDAS",
+    "AGUARDIENTE 375": "RON Y VINOS", "AGUARDIENTE 750": "RON Y VINOS", "BUCHANNA 375": "RON Y VINOS",
+    "BUCHANNA 750": "RON Y VINOS", "OLD PARR 750": "RON Y VINOS", "RON CALDAS 375": "RON Y VINOS",
+    "RON MEDELLIN 375": "RON Y VINOS", "RON MEDELLIN 750": "RON Y VINOS", "TEQUILA JOSE CUERVO 750": "RON Y VINOS",
+    "TRIPLESECC": "RON Y VINOS", "V.BLANCO S.B SANTA RITA 750": "RON Y VINOS",
+    "V.TINTO C.B 750 SANT RITA": "RON Y VINOS", "V.TINTO POLERO 750ML": "RON Y VINOS",
+    "PULPA DE FRESA 90GR": "PULPAS Y FRUTAS", "PULPA DE MANGO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MARACUYA 90 GR": "PULPAS Y FRUTAS", "PULPA LULO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MORA 90 GR": "PULPAS Y FRUTAS", "PULPA GUANABANA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE COROZO KL": "PULPAS Y FRUTAS", "LIMON": "PULPAS Y FRUTAS", "NARANJA": "PULPAS Y FRUTAS",
+    "CHOCO CONO": "HELADOS Y POSTRES", "HELADO DE GALLETA": "HELADOS Y POSTRES",
+    "PALETA CHOCO BREACK": "HELADOS Y POSTRES", "HELADO CASERO": "HELADOS Y POSTRES",
+    "POSTRES DE LA CASA": "HELADOS Y POSTRES", "CREMA DE COCO": "HELADOS Y POSTRES",
+    "CEREZA": "HELADOS Y POSTRES", "CREMA DE LECHE": "HELADOS Y POSTRES",
+    "V.BLANCO POLERO": "HELADOS Y POSTRES", "AZUCAR POR KILO": "HELADOS Y POSTRES", "CAFÉ POR SOBRE": "HELADOS Y POSTRES"
+}
+
+def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: str) -> Dict[str, List[dict]]:
+    cats = {"BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": []}
+    for prod in productos:
+        cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
+        cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
+        inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
+        entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
+        ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
+        cats[cat].append({
+            'id': prod['id'], 'nombre': prod['nombre'], 'inv_ini': inv_ini, 'entra': entra,
+            'total': inv_ini + entra, 'ventas': ventas, 'inv_final': inv_ini + entra - ventas,
+            'bajas': 0, 'observaciones': ''
+        })
+    for cat in cats:
+        cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
+    return cats
+
+@app.get("/api/reporte/imprimir", response_class=HTMLResponse)
+def print_view(request: Request, fecha: Optional[str] = Query(None), user: dict = Depends(check_url_token)):
+    fecha = fecha or datetime.now().date().isoformat()
+    productos = obtener_productos()
+    movimientos = obtener_movimientos_dia(fecha)
+    cats = calcular_inventario(productos, movimientos, fecha)
+    return templates.TemplateResponse("print_view.html", {
+        "request": request, "fecha": fecha,
+        "categorias": [{"nombre": c, "productos": p} for c, p in cats.items() if p]
+    })
+
+@app.get("/api/reporte/pdf")
+def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
+    productos = obtener_productos()
+    movimientos = obtener_movimientos_dia(fecha)
+    cats = calcular_inventario(productos, movimientos, fecha)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.3*inch, rightMargin=0.3*inch)
+    elements, styles = [], getSampleStyleSheet()
+    elements.append(Paragraph("INVENTARIO RESTAURANTE", ParagraphStyle('T', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=5)))
+    elements.append(Paragraph(f"FECHA: {fecha}", ParagraphStyle('S', alignment=1, spaceAfter=12, fontSize=10)))
+    data = [['PRODUCTOS', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL', 'BAJAS', 'OBSERV.']]
+    for cat in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
+        for prod in cats.get(cat, []):
+            data.append([prod['nombre'], str(prod['inv_ini']), str(prod['entra']), str(prod['total']), str(prod['ventas']), str(prod['inv_final']), '', ''])
+    table = Table(data, colWidths=[2.3*inch, 0.65*inch, 0.65*inch, 0.65*inch, 0.65*inch, 0.85*inch, 0.55*inch, 0.9*inch])
+    table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey), ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 8), ('BOTTOMPADDING', (0, 0), (-1, 0), 6), ('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.beige]), ('FONTSIZE', (0, 1), (-1, -1), 7)]))
+    elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=inventario_{fecha}.pdf"})
+
+@app.get("/api/health")
+def health():
+    return {"status": "alive", "app": "solinilla-api", "version": "2.0", "timestamp": datetime.utcnow().isoformat()}
