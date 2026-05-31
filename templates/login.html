@@ -1,102 +1,86 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<<<<<<< HEAD
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - Solinilla</title>
-<style>
-body{font-family:sans-serif;background:#f0f2f5;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
-.box{background:white;padding:2rem;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.1);width:90%;max-width:320px;text-align:center}
-input{width:100%;padding:12px;margin:10px 0;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
-button{width:100%;padding:12px;background:#3498db;color:white;border:none;border-radius:6px;font-size:16px;cursor:pointer;font-weight:bold}
-button:hover{background:#2980b9}
-.err{color:red;font-size:0.9rem;margin-bottom:10px;display:none}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Solinilla</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); width: 100%; max-width: 400px; }
+        .logo { text-align: center; margin-bottom: 30px; }
+        .logo h1 { color: #667eea; font-size: 2rem; margin-bottom: 10px; }
+        .logo p { color: #666; font-size: 0.9rem; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; }
+        .form-group input { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem; transition: border-color 0.3s; }
+        .form-group input:focus { outline: none; border-color: #667eea; }
+        .btn-login { width: 100%; padding: 14px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.3s; }
+        .btn-login:hover { background: #5568d3; }
+        .error { background: #fee; color: #c33; padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; display: none; }
+        .error.show { display: block; }
+        .footer { text-align: center; margin-top: 20px; color: #999; font-size: 0.85rem; }
+    </style>
 </head>
 <body>
-<div class="box">
-<h2>🍽️ Solinilla</h2>
-<div id="err" class="err">Credenciales incorrectas</div>
-<input type="text" id="u" placeholder="Usuario">
-<input type="password" id="p" placeholder="Contraseña">
-<button onclick="login()">Entrar</button>
-</div>
-<script>
-async function login(){
-try{
-const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
-if(r.ok){const d=await r.json();localStorage.setItem('token',d.access_token);window.location.href='/dashboard';}
-else{document.getElementById('err').style.display='block';}
-}catch(e){document.getElementById('err').textContent='Error de conexión';document.getElementById('err').style.display='block';}
-}
-</script>
-=======
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login | Restaurante Solinilla</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
-    .card { background: #ffffff; padding: 2rem; border-radius: 16px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); width: 100%; max-width: 380px; }
-    .logo { text-align: center; font-size: 2.8rem; margin-bottom: 0.5rem; }
-    h2 { text-align: center; color: #111827; margin-bottom: 1.5rem; font-weight: 600; }
-    input { width: 100%; padding: 0.85rem; margin: 0.4rem 0 1rem; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 1rem; transition: 0.2s; }
-    input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
-    button { width: 100%; padding: 0.85rem; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
-    button:hover { background: #1d4ed8; }
-    .error { color: #dc2626; text-align: center; margin-top: 0.8rem; font-size: 0.88rem; display: none; background: #fef2f2; padding: 0.5rem; border-radius: 6px; }
-    .footer { text-align: center; margin-top: 1.2rem; font-size: 0.75rem; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">🍽️</div>
-    <h2>Sistema Solinilla</h2>
-    <form id="login-form">
-      <input type="text" id="username" placeholder="Usuario" required autocomplete="username">
-      <input type="password" id="password" placeholder="Contraseña" required autocomplete="current-password">
-      <button type="submit">Iniciar Sesión</button>
-    </form>
-    <p class="error" id="error-msg"></p>
-    <p class="footer">v1.0 | Multiplataforma</p>
-  </div>
+    <div class="login-box">
+        <div class="logo">
+            <h1>🍽️ Solinilla</h1>
+            <p>Sistema de Inventario</p>
+        </div>
+        
+        <div id="error-msg" class="error"></div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Usuario</label>
+                <input type="text" id="username" name="username" required autocomplete="username" placeholder="Ingresa tu usuario">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Contraseña</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Ingresa tu contraseña">
+            </div>
+            
+            <button type="submit" class="btn-login">Entrar</button>
+        </form>
+        
+        <div class="footer">
+            v2.0 | Multiplataforma
+        </div>
+    </div>
 
-  <script>
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = e.target.querySelector('button');
-      const errorEl = document.getElementById('error-msg');
-      btn.disabled = true;
-      btn.textContent = 'Verificando...';
-      errorEl.style.display = 'none';
-
-      try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: document.getElementById('username').value.trim(),
-            password: document.getElementById('password').value
-          })
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error-msg');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Guardar token y redirigir
+                    localStorage.setItem('token', data.access_token);
+                    localStorage.setItem('rol', data.user.rol);
+                    window.location.href = '/dashboard';
+                } else {
+                    errorDiv.textContent = data.detail || 'Credenciales incorrectas';
+                    errorDiv.classList.add('show');
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Error de conexión. Intenta de nuevo.';
+                errorDiv.classList.add('show');
+            }
         });
-
-        const data = await res.json();
-        if (res.ok) {
-          localStorage.setItem('token', data.access_token);
-          localStorage.setItem('rol', data.rol);
-          window.location.href = '/dashboard';
-        } else {
-          throw new Error(data.detail || 'Credenciales incorrectas');
-        }
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.style.display = 'block';
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Iniciar Sesión';
-      }
-    });
-  </script>
->>>>>>> 689b273a268eab275c927706c27abae2ce1d9aec
+    </script>
 </body>
 </html>
