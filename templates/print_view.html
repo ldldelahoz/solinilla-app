@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario Restaurante - Solinilla</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            padding: 15px;
+            background: #fff;
+        }
+        
+        /* Encabezado */
+        .header {
+            border: 2px solid #000;
+            padding: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .header h1 { font-size: 18px; margin-bottom: 5px; }
+        .header .fecha { font-size: 14px; margin-top: 5px; }
+        
+        /* Tabla principal estilo inventario */
+        .inventory-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid #000;
+            margin-bottom: 20px;
+        }
+        .inventory-table th,
+        .inventory-table td {
+            border: 1px solid #000;
+            padding: 6px 4px;
+            text-align: left;
+        }
+        .inventory-table th {
+            background: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+            font-size: 10px;
+        }
+        .inventory-table .col-producto { width: 25%; }
+        .inventory-table .col-num { width: 10%; text-align: right; }
+        .inventory-table .col-obs { width: 15%; }
+        
+        /* Categorías */
+        .category-row td {
+            background: #e0e0e0;
+            font-weight: bold;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        /* Productos */
+        .product-row td:first-child {
+            padding-left: 10px;
+        }
+        
+        /* Footer */
+        .footer {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #000;
+            padding-top: 10px;
+        }
+        .footer div { width: 45%; }
+        .footer-line {
+            border-bottom: 1px solid #000;
+            margin: 20px 0 5px;
+            height: 30px;
+        }
+        
+        /* Botones (solo pantalla) */
+        .actions {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .btn {
+            padding: 8px 15px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .btn-print { background: #3498db; color: white; }
+        .btn-pdf { background: #e74c3c; color: white; }
+        .btn-close { background: #95a5a6; color: white; }
+        
+        @media print {
+            .actions { display: none; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Botones de acción (solo pantalla) -->
+    <div class="actions">
+        <button class="btn btn-print" onclick="window.print()">🖨️ Imprimir</button>
+        <button class="btn btn-pdf" onclick="downloadPDF()">📄 Descargar PDF</button>
+        <button class="btn btn-close" onclick="window.close()">❌ Cerrar</button>
+    </div>
+
+    <!-- Encabezado -->
+    <div class="header">
+        <h1>INVENTARIO RESTAURANTE</h1>
+        <div class="fecha">FECHA: <strong>{{ fecha }}</strong></div>
+    </div>
+
+    <!-- Tabla de Inventario -->
+    <table class="inventory-table">
+        <thead>
+            <tr>
+                <th class="col-producto">PRODUCTOS</th>
+                <th class="col-num">INV. INI</th>
+                <th class="col-num">ENTRA</th>
+                <th class="col-num">TOTAL</th>
+                <th class="col-num">VENTAS</th>
+                <th class="col-num">INV. FINAL</th>
+                <th class="col-num">BAJAS</th>
+                <th class="col-obs">OBSERVACIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cat in categorias %}
+            <!-- Categoría -->
+            <tr class="category-row">
+                <td colspan="8">{{ cat.nombre }}</td>
+            </tr>
+            
+            <!-- Productos de la categoría -->
+            {% for prod in cat.productos %}
+            <tr class="product-row">
+                <td>{{ prod.nombre }}</td>
+                <td style="text-align: right;">{{ prod.inv_ini or '' }}</td>
+                <td style="text-align: right;">{{ prod.entra or '' }}</td>
+                <td style="text-align: right; font-weight: bold;">{{ prod.total or '' }}</td>
+                <td style="text-align: right;">{{ prod.ventas or '' }}</td>
+                <td style="text-align: right; font-weight: bold;">{{ prod.inv_final or '' }}</td>
+                <td style="text-align: right;">{{ prod.bajas or '' }}</td>
+                <td>{{ prod.observaciones or '' }}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Footer con firmas -->
+    <div class="footer">
+        <div>
+            <div class="footer-line"></div>
+            <div style="text-align: center; font-size: 10px;">NOMBRE INV INICIAL</div>
+        </div>
+        <div>
+            <div class="footer-line"></div>
+            <div style="text-align: center; font-size: 10px;">NOMBRE INV FINAL</div>
+        </div>
+    </div>
+
+    <script>
+        function downloadPDF() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const fecha = urlParams.get('fecha');
+            const token = urlParams.get('token');
+            window.location.href = `/api/reporte/pdf?fecha=${fecha}&token=${token}`;
+        }
+    </script>
+</body>
+</html>

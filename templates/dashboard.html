@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dashboard - Solinilla</title>
+    <style>
+        /* =========================================
+           VARIABLES DE COLORES Y CONFIGURACIÓN
+           ========================================= */
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --danger-color: #e74c3c;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --background-color: #f8f9fa;
+            --white-color: #ffffff;
+            --text-color: #333333;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+
+        /* =========================================
+           ESTILOS GENERALES (RESET Y BASE)
+           ========================================= */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            padding-bottom: 60px; /* Espacio para scroll en móviles */
+            line-height: 1.5;
+        }
+
+        /* =========================================
+           ENCABEZADO (HEADER)
+           ========================================= */
+        header {
+            background-color: var(--primary-color);
+            color: var(--white-color);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 5px var(--shadow-color);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-header {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            color: var(--white-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+
+        .btn-header:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* =========================================
+           ALERTAS
+           ========================================= */
+        .alert-bar {
+            background-color: var(--warning-color);
+            color: #fff;
+            padding: 10px 15px;
+            margin: 10px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: none; /* Oculto por defecto */
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 4px var(--shadow-color);
+        }
+
+        /* =========================================
+           PESTAÑAS DE NAVEGACIÓN (TABS)
+           ========================================= */
+        .tabs {
+            display: flex;
+            background-color: var(--white-color);
+            border-bottom: 1px solid #ddd;
+            position: sticky;
+            top: 56px;
+            z-index: 90;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+            font-weight: 700;
+            background-color: #f0f7ff;
+        }
+
+        /* =========================================
+           CONTENIDO Y SECCIONES
+           ========================================= */
+        .section {
+            padding: 15px;
+            display: none; /* Ocultas por defecto */
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        /* =========================================
+           TARJETAS (CARDS)
+           ========================================= */
+        .card {
+            background-color: var(--white-color);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            margin-bottom: 15px;
+        }
+
+        .card h3 {
+            margin-bottom: 12px;
+            color: var(--primary-color);
+            font-size: 1rem;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 8px;
+        }
+
+        /* Tarjeta especial para Cierre de Inventario */
+        .card.cierre {
+            border: 2px solid var(--danger-color);
+            background-color: #fff5f5;
+        }
+        .card.cierre h3 {
+            color: var(--danger-color);
+            border-bottom-color: var(--danger-color);
+        }
+
+        /* =========================================
+           FORMULARIOS (INPUTS Y SELECTS)
+           ========================================= */
+        input, select {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+            background-color: #fff;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--accent-color);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+        }
+
+        /* =========================================
+           BOTONES PRINCIPALES
+           ========================================= */
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            color: white;
+            margin-top: 5px;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover { opacity: 0.9; }
+
+        .btn-primary { background-color: var(--accent-color); }
+        .btn-success { background-color: var(--success-color); }
+        .btn-danger  { background-color: var(--danger-color); }
+        .btn-warning { background-color: var(--warning-color); color: #000; }
+
+        /* =========================================
+           GRUPO DE ACCIONES (ICONOS EN TABLA)
+           ========================================= */
+        .action-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn {
+            width: 34px;
+            height: 34px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s;
+        }
+
+        .icon-btn:hover { transform: scale(1.1); }
+        .icon-add { background-color: var(--success-color); color: white; }
+        .icon-sub { background-color: var(--warning-color); color: white; }
+        .icon-del { background-color: var(--danger-color); color: white; }
+
+        /* =========================================
+           TABLAS
+           ========================================= */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--white-color);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f4f6f8;
+            color: #444;
+            font-weight: 600;
+        }
+
+        .stock-ok { color: var(--success-color); font-weight: 700; }
+        .stock-low { color: var(--danger-color); font-weight: 700; }
+
+        /* =========================================
+           RESPONSIVE (MÓVILES)
+           ========================================= */
+        @media (max-width: 600px) {
+            .action-group { flex-direction: column; gap: 4px; }
+            .icon-btn { width: 30px; height: 30px; font-size: 0.9rem; }
+            th, td { padding: 10px 6px; font-size: 0.85rem; }
+            .card { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ENCABEZADO SUPERIOR -->
+    <header>
+        <h1>🍽️ Solinilla</h1>
+        <div class="header-actions">
+            <button class="btn-header" onclick="openPrintView()">🖨️ Imprimir</button>
+            <button class="btn-header" onclick="logout()">Salir</button>
+        </div>
+    </header>
+
+    <!-- BARRA DE ALERTAS (Stock bajo) -->
+    <div id="stock-alert" class="alert-bar"></div>
+
+    <!-- NAVEGACIÓN POR PESTAÑAS -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('inv')">📦 Inventario</button>
+        <button class="tab-btn" onclick="switchTab('mov')">🔄 Movimientos</button>
+        <button class="tab-btn" onclick="switchTab('rep')">📊 Reportes</button>
+    </div>
+
+    <!-- ==========================================
+         SECCIÓN 1: INVENTARIO
+         ========================================== -->
+    <div id="inv" class="section active">
+        <!-- Buscador Desplegable -->
+        <div class="card">
+            <h3>🔍 Buscar Producto</h3>
+            <select id="search-select" onchange="highlightProduct()">
+                <option value="">-- Selecciona un producto --</option>
+            </select>
+        </div>
+
+        <!-- Tabla de Productos -->
+        <div class="card" style="padding: 0; overflow-x: auto;">
+            <table id="inventory-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Stock</th>
+                        <th style="text-align: center;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Se llena dinámicamente con JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECCIÓN 2: MOVIMIENTOS
+         ========================================== -->
+    <div id="mov" class="section">
+        <!-- Formulario de Movimiento -->
+        <div class="card">
+            <h3>📝 Registrar Movimiento</h3>
+            
+            <label style="font-size: 0.9rem; color: #666;">Producto:</label>
+            <select id="mov-product-select" onchange="document.getElementById('mov-product-id').value = this.value">
+                <option value="">-- Selecciona producto --</option>
+            </select>
+            <input type="hidden" id="mov-product-id">
+            
+            <label style="font-size: 0.9rem; color: #666;">Cantidad:</label>
+            <input type="number" id="mov-qty" placeholder="Cantidad" min="1">
+            
+            <label style="font-size: 0.9rem; color: #666;">Tipo:</label>
+            <select id="mov-type">
+                <option value="entrada">🟢 Entrada (Compra/Reposición)</option>
+                <option value="salida"> Salida (Venta/Consumo)</option>
+            </select>
+            
+            <label style="font-size: 0.9rem; color: #666;">Motivo (opcional):</label>
+            <input type="text" id="mov-reason" placeholder="Ej: Proveedor X">
+            
+            <button class="btn btn-success" onclick="registerMovement()">✅ Registrar</button>
+        </div>
+
+        <!-- Historial del Día -->
+        <div class="card">
+            <h3>📅 Movimientos de Hoy</h3>
+            <table id="movements-table">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Se llena dinámicamente con JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECCIÓN 3: REPORTES Y CIERRE
+         ========================================== -->
+    <div id="rep" class="section">
+        <!-- Generador de PDF -->
+        <div class="card">
+            <h3>📥 Generar Reporte PDF</h3>
+            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Selecciona la fecha:</label>
+            <input type="date" id="report-date">
+            <button class="btn btn-primary" onclick="downloadPDF()"> Descargar PDF</button>
+        </div>
+
+        <!-- NUEVA FUNCIÓN: Cierre de Inventario -->
+        <div class="card cierre">
+            <h3>🔒 Cerrar Inventario del Día</h3>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 10px;">
+                Esta acción guarda el estado final del inventario de hoy (INV FINAL) 
+                para que sea automáticamente el Inventario Inicial (INV INI) de mañana.
+            </p>
+            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Fecha a cerrar:</label>
+            <input type="date" id="cierre-date">
+            <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR INVENTARIO</button>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         JAVASCRIPT (LÓGICA)
+         ========================================== -->
+    <script>
+        // Configuración base
+        const API_BASE = '';
+        let token = localStorage.getItem('token');
+        let productsData = [];
+
+        // Redirigir si no hay sesión activa
+        if (!token) {
+            window.location.href = '/';
+        }
+
+        /**
+         * Cambia entre pestañas del dashboard
+         */
+        function switchTab(tabId) {
+            // Ocultar todas las secciones
+            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            // Mostrar la seleccionada
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Cargar datos específicos
+            if (tabId === 'inv') loadInventory();
+            if (tabId === 'mov') loadMovements();
+        }
+
+        /**
+         * Cierra sesión y borra token
+         */
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/';
+        }
+
+        /**
+         * Función genérica para llamadas a la API
+         */
+        async function apiCall(url, method = 'GET', body = null) {
+            const headers = { 'Authorization': 'Bearer ' + token };
+            if (body) headers['Content-Type'] = 'application/json';
+            
+            const response = await fetch(url, { 
+                method: method, 
+                headers: headers, 
+                body: body ? JSON.stringify(body) : null 
+            });
+            
+            if (response.status === 401) logout();
+            return response.json();
+        }
+
+        // ==========================================
+        // LÓGICA DE INVENTARIO
+        // ==========================================
+
+        /**
+         * Carga la lista de productos y actualiza la tabla
+         */
+        async function loadInventory() {
+            const data = await apiCall('/api/productos');
+            productsData = data.productos || [];
+            
+            const tbody = document.querySelector('#inventory-table tbody');
+            const searchSelect = document.getElementById('search-select');
+            const movSelect = document.getElementById('mov-product-select');
+            
+            tbody.innerHTML = '';
+            searchSelect.innerHTML = '<option value="">-- Selecciona un producto --</option>';
+            movSelect.innerHTML = '<option value="">-- Selecciona producto --</option>';
+            
+            let lowStockCount = 0;
+            let lowStockNames = [];
+
+            productsData.forEach(p => {
+                // Determinar clase de stock
+                const stockClass = p.stock < 10 ? 'stock-low' : 'stock-ok';
+                
+                // Alerta de stock bajo
+                if (p.stock < 10) {
+                    lowStockCount++;
+                    lowStockNames.push(`${p.nombre} (${p.stock})`);
+                }
+
+                // Crear fila de tabla
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${p.id}</td>
+                    <td>${p.nombre}</td>
+                    <td class="${stockClass}">${p.stock}</td>
+                    <td>
+                        <div class="action-group">
+                            <button class="icon-btn icon-add" onclick="quickAction('${p.id}', 'entrada')" title="Agregar Stock">➕</button>
+                            <button class="icon-btn icon-sub" onclick="quickAction('${p.id}', 'salida')" title="Descontar Stock">➖</button>
+                            <button class="icon-btn icon-del" onclick="deleteProduct('${p.id}')" title="Eliminar Producto">🗑️</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                // Llenar selects de búsqueda y movimientos
+                const optionHTML = `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`;
+                searchSelect.innerHTML += optionHTML;
+                movSelect.innerHTML += optionHTML;
+            });
+
+            // Actualizar barra de alerta
+            const alertBox = document.getElementById('stock-alert');
+            if (lowStockCount > 0) {
+                alertBox.style.display = 'flex';
+                alertBox.innerHTML = `⚠️ <strong>${lowStockCount} productos con stock bajo:</strong> ${lowStockNames.join(', ')}`;
+            } else {
+                alertBox.style.display = 'none';
+            }
+        }
+
+        /**
+         * Resalta un producto en la tabla al buscarlo
+         */
+        function highlightProduct() {
+            const selectedId = document.getElementById('search-select').value;
+            if (!selectedId) return;
+
+            const rows = document.querySelectorAll('#inventory-table tbody tr');
+            rows.forEach(row => {
+                if (row.cells[0].textContent === selectedId) {
+                    row.style.backgroundColor = '#fff3cd';
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => { row.style.backgroundColor = ''; }, 2000);
+                }
+            });
+        }
+
+        /**
+         * Pre-llena el formulario de movimiento para acción rápida
+         */
+        function quickAction(productId, type) {
+            document.getElementById('mov-product-id').value = productId;
+            document.getElementById('mov-product-select').value = productId;
+            document.getElementById('mov-type').value = type;
+            document.getElementById('mov-qty').value = '1';
+            document.getElementById('mov-qty').focus();
+            switchTab('mov');
+        }
+
+        /**
+         * Elimina un producto
+         */
+        async function deleteProduct(id) {
+            if (!confirm('¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.')) return;
+            await apiCall(`/api/productos/${id}`, 'DELETE');
+            loadInventory();
+        }
+
+        // ==========================================
+        // LÓGICA DE MOVIMIENTOS
+        // ==========================================
+
+        /**
+         * Registra una entrada o salida
+         */
+        async function registerMovement() {
+            const productId = document.getElementById('mov-product-id').value || document.getElementById('mov-product-select').value;
+            const qty = parseFloat(document.getElementById('mov-qty').value);
+            const type = document.getElementById('mov-type').value;
+            const reason = document.getElementById('mov-reason').value;
+
+            if (!productId || !qty || qty <= 0) {
+                return alert('Por favor selecciona un producto e ingresa una cantidad válida.');
+            }
+
+            const result = await apiCall('/api/movimientos', 'POST', {
+                producto_id: productId,
+                tipo: type,
+                cantidad: qty,
+                motivo: reason
+            });
+
+            alert(result.msg || 'Movimiento registrado');
+            
+            // Limpiar formulario
+            document.getElementById('mov-qty').value = '';
+            document.getElementById('mov-reason').value = '';
+            
+            // Recargar datos
+            loadMovements();
+            loadInventory();
+        }
+
+        /**
+         * Carga el historial de movimientos del día
+         */
+        async function loadMovements() {
+            const today = new Date().toISOString().split('T')[0];
+            const data = await apiCall(`/api/movimientos?fecha=${today}`);
+            const tbody = document.querySelector('#movements-table tbody');
+            tbody.innerHTML = '';
+
+            (data.movimientos || []).forEach(m => {
+                const color = m.tipo === 'entrada' ? 'green' : 'red';
+                const icon = m.tipo === 'entrada' ? '🟢' : '🔴';
+                const prodName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="color:${color}; font-weight:600;">${icon} ${m.tipo}</td>
+                        <td>${prodName}</td>
+                        <td>${m.cantidad}</td>
+                        <td>${m.motivo || '-'}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // ==========================================
+        // LÓGICA DE REPORTES Y CIERRE
+        // ==========================================
+
+        /**
+         * Abre la vista de impresión en nueva ventana
+         */
+        async function openPrintView() {
+            const fecha = new Date().toISOString().split('T')[0];
+            const url = `${API_BASE}/api/reporte/imprimir?fecha=${fecha}&token=${encodeURIComponent(token)}`;
+            window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
+        }
+
+        /**
+         * Descarga el PDF directamente
+         */
+        async function downloadPDF() {
+            const fecha = document.getElementById('report-date').value;
+            if (!fecha) return alert('Por favor selecciona una fecha.');
+            
+            const url = `${API_BASE}/api/reporte/pdf?fecha=${fecha}&token=${encodeURIComponent(token)}`;
+            window.location.href = url;
+        }
+
+        /**
+         * NUEVA FUNCIÓN: Cierra el inventario del día
+         */
+        async function cerrarInventario() {
+            const fecha = document.getElementById('cierre-date').value;
+            if (!fecha) return alert('Por favor selecciona una fecha para el cierre.');
+            
+            if (!confirm(`¿Estás seguro de CERRAR el inventario del día ${fecha}?\n\nEsto guardará el estado actual (INV FINAL) y lo usará como INV INI para el día siguiente.\n\nNo podrás modificar este cierre después.`)) {
+                return;
+            }
+
+            try {
+                const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
+                alert(result.msg || 'Inventario cerrado exitosamente');
+            } catch (error) {
+                alert('Error al cerrar inventario: ' + error.message);
+            }
+        }
+
+        // Inicialización al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('report-date').valueAsDate = new Date();
+            document.getElementById('cierre-date').valueAsDate = new Date();
+            loadInventory();
+        });
+    </script>
+</body>
+</html>
