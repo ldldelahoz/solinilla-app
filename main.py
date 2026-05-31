@@ -1,4 +1,6 @@
 ﻿#!/usr/bin/env python3
+"""Solinilla Inventory API"""
+
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,14 +10,20 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from io import BytesIO
+
 from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+
 from src.db import init_db
 from src.auth import verify_password, create_access_token, decode_token
-from src.inventory import obtener_usuario_por_username, obtener_productos, crear_producto, eliminar_producto, registrar_movimiento, obtener_movimientos_dia, obtener_cierre_anterior, cerrar_inventario_dia, obtener_cierre_por_fecha
+from src.inventory import (
+    obtener_usuario_por_username, obtener_productos, crear_producto, eliminar_producto,
+    registrar_movimiento, obtener_movimientos_dia, obtener_cierre_anterior,
+    cerrar_inventario_dia, obtener_cierre_por_fecha
+)
 
 app = FastAPI(title="Solinilla Inventory API", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -111,13 +119,36 @@ def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict 
         entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
         ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
         inv_final = inv_ini + entra - ventas
-        productos_con_cierre.append({'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra, 'ventas': ventas, 'bajas': 0, 'inv_final': inv_final, 'observaciones': ''})
+        productos_con_cierre.append({
+            'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra,
+            'ventas': ventas, 'bajas': 0, 'inv_final': inv_final, 'observaciones': ''
+        })
     ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
     return {"msg": msg} if ok else HTTPException(400, msg)
 
-CATEGORIA_MAP = {"SODA HADSU": "BEBIDAS", "COCACOLAPET 250ML": "BEBIDAS", "GINGER DRY 300ML": "BEBIDAS", "COCA COLA PET 400": "BEBIDAS", "POSTOBON PET 400": "BEBIDAS", "COCA COLA ZERO 400": "BEBIDAS", "GATORADE": "BEBIDAS", "CERVEZA AGUILA LIGHT": "BEBIDAS", "CERVEZA AGUILA NEGRA": "BEBIDAS", "CERVEZA CLUB COLOMBIA": "BEBIDAS", "CERVEZA STELLA": "BEBIDAS", "AGUA PET 600": "BEBIDAS", "TE HATSU 500 ML": "BEBIDAS", "CERVEZA CORONA 330ML": "BEBIDAS", "SODA SCHWEPPERS": "BEBIDAS", "AGUARDIENTE 375": "RON Y VINOS", "AGUARDIENTE 750": "RON Y VINOS", "BUCHANNA 375": "RON Y VINOS", "BUCHANNA 750": "RON Y VINOS", "OLD PARR 750": "RON Y VINOS", "RON CALDAS 375": "RON Y VINOS", "RON MEDELLIN 375": "RON Y VINOS", "RON MEDELLIN 750": "RON Y VINOS", "TEQUILA JOSE CUERVO 750": "RON Y VINOS", "TRIPLESECC": "RON Y VINOS", "V.BLANCO S.B SANTA RITA 750": "RON Y VINOS", "V.TINTO C.B 750 SANT RITA": "RON Y VINOS", "V.TINTO POLERO 750ML": "RON Y VINOS", "PULPA DE FRESA 90GR": "PULPAS Y FRUTAS", "PULPA DE MANGO 90 GR": "PULPAS Y FRUTAS", "PULPA DE MARACUYA 90 GR": "PULPAS Y FRUTAS", "PULPA LULO 90 GR": "PULPAS Y FRUTAS", "PULPA DE MORA 90 GR": "PULPAS Y FRUTAS", "PULPA GUANABANA 90 GR": "PULPAS Y FRUTAS", "PULPA DE COROZO KL": "PULPAS Y FRUTAS", "LIMON": "PULPAS Y FRUTAS", "NARANJA": "PULPAS Y FRUTAS", "CHOCO CONO": "HELADOS Y POSTRES", "HELADO DE GALLETA": "HELADOS Y POSTRES", "PALETA CHOCO BREACK": "HELADOS Y POSTRES", "HELADO CASERO": "HELADOS Y POSTRES", "POSTRES DE LA CASA": "HELADOS Y POSTRES", "CREMA DE COCO": "HELADOS Y POSTRES", "CEREZA": "HELADOS Y POSTRES", "CREMA DE LECHE": "HELADOS Y POSTRES", "V.BLANCO POLERO": "HELADOS Y POSTRES", "AZUCAR POR KILO": "HELADOS Y POSTRES", "CAFÉ POR SOBRE": "HELADOS Y POSTRES"}
+CATEGORIA_MAP = {
+    "SODA HADSU": "BEBIDAS", "COCACOLAPET 250ML": "BEBIDAS", "GINGER DRY 300ML": "BEBIDAS",
+    "COCA COLA PET 400": "BEBIDAS", "POSTOBON PET 400": "BEBIDAS", "COCA COLA ZERO 400": "BEBIDAS",
+    "GATORADE": "BEBIDAS", "CERVEZA AGUILA LIGHT": "BEBIDAS", "CERVEZA AGUILA NEGRA": "BEBIDAS",
+    "CERVEZA CLUB COLOMBIA": "BEBIDAS", "CERVEZA STELLA": "BEBIDAS", "AGUA PET 600": "BEBIDAS",
+    "TE HATSU 500 ML": "BEBIDAS", "CERVEZA CORONA 330ML": "BEBIDAS", "SODA SCHWEPPERS": "BEBIDAS",
+    "AGUARDIENTE 375": "RON Y VINOS", "AGUARDIENTE 750": "RON Y VINOS", "BUCHANNA 375": "RON Y VINOS",
+    "BUCHANNA 750": "RON Y VINOS", "OLD PARR 750": "RON Y VINOS", "RON CALDAS 375": "RON Y VINOS",
+    "RON MEDELLIN 375": "RON Y VINOS", "RON MEDELLIN 750": "RON Y VINOS", "TEQUILA JOSE CUERVO 750": "RON Y VINOS",
+    "TRIPLESECC": "RON Y VINOS", "V.BLANCO S.B SANTA RITA 750": "RON Y VINOS",
+    "V.TINTO C.B 750 SANT RITA": "RON Y VINOS", "V.TINTO POLERO 750ML": "RON Y VINOS",
+    "PULPA DE FRESA 90GR": "PULPAS Y FRUTAS", "PULPA DE MANGO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MARACUYA 90 GR": "PULPAS Y FRUTAS", "PULPA LULO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MORA 90 GR": "PULPAS Y FRUTAS", "PULPA GUANABANA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE COROZO KL": "PULPAS Y FRUTAS", "LIMON": "PULPAS Y FRUTAS", "NARANJA": "PULPAS Y FRUTAS",
+    "CHOCO CONO": "HELADOS Y POSTRES", "HELADO DE GALLETA": "HELADOS Y POSTRES",
+    "PALETA CHOCO BREACK": "HELADOS Y POSTRES", "HELADO CASERO": "HELADOS Y POSTRES",
+    "POSTRES DE LA CASA": "HELADOS Y POSTRES", "CREMA DE COCO": "HELADOS Y POSTRES",
+    "CEREZA": "HELADOS Y POSTRES", "CREMA DE LECHE": "HELADOS Y POSTRES",
+    "V.BLANCO POLERO": "HELADOS Y POSTRES", "AZUCAR POR KILO": "HELADOS Y POSTRES", "CAFÉ POR SOBRE": "HELADOS Y POSTRES"
+}
 
-def calcular_inventario(productos, movimientos, fecha):
+def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: str) -> Dict[str, List[dict]]:
     cats = {"BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": []}
     for prod in productos:
         cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
@@ -125,8 +156,13 @@ def calcular_inventario(productos, movimientos, fecha):
         inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
         entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
         ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
-        cats[cat].append({'id': prod['id'], 'nombre': prod['nombre'], 'inv_ini': inv_ini, 'entra': entra, 'total': inv_ini + entra, 'ventas': ventas, 'inv_final': inv_ini + entra - ventas, 'bajas': 0, 'observaciones': ''})
-    for cat in cats: cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
+        cats[cat].append({
+            'id': prod['id'], 'nombre': prod['nombre'], 'inv_ini': inv_ini, 'entra': entra,
+            'total': inv_ini + entra, 'ventas': ventas, 'inv_final': inv_ini + entra - ventas,
+            'bajas': 0, 'observaciones': ''
+        })
+    for cat in cats:
+        cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
 
 @app.get("/api/reporte/imprimir", response_class=HTMLResponse)
@@ -135,7 +171,10 @@ def print_view(request: Request, fecha: Optional[str] = Query(None), user: dict 
     productos = obtener_productos()
     movimientos = obtener_movimientos_dia(fecha)
     cats = calcular_inventario(productos, movimientos, fecha)
-    return templates.TemplateResponse("print_view.html", {"request": request, "fecha": fecha, "categorias": [{"nombre": c, "productos": p} for c, p in cats.items() if p]})
+    return templates.TemplateResponse("print_view.html", {
+        "request": request, "fecha": fecha,
+        "categorias": [{"nombre": c, "productos": p} for c, p in cats.items() if p]
+    })
 
 @app.get("/api/reporte/pdf")
 def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
@@ -149,7 +188,8 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
     elements.append(Paragraph(f"FECHA: {fecha}", ParagraphStyle('S', alignment=1, spaceAfter=12, fontSize=10)))
     data = [['PRODUCTOS', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL', 'BAJAS', 'OBSERV.']]
     for cat in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
-        for prod in cats.get(cat, []): data.append([prod['nombre'], str(prod['inv_ini']), str(prod['entra']), str(prod['total']), str(prod['ventas']), str(prod['inv_final']), '', ''])
+        for prod in cats.get(cat, []):
+            data.append([prod['nombre'], str(prod['inv_ini']), str(prod['entra']), str(prod['total']), str(prod['ventas']), str(prod['inv_final']), '', ''])
     table = Table(data, colWidths=[2.3*inch, 0.65*inch, 0.65*inch, 0.65*inch, 0.65*inch, 0.85*inch, 0.55*inch, 0.9*inch])
     table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey), ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 8), ('BOTTOMPADDING', (0, 0), (-1, 0), 6), ('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.beige]), ('FONTSIZE', (0, 1), (-1, -1), 7)]))
     elements.append(table)
