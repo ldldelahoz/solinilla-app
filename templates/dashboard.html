@@ -6,15 +6,21 @@
     <title>Dashboard - Solinilla</title>
     <style>
         :root {
-            --primary: #2c3e50; --accent: #3498db; --danger: #e74c3c; --success: #27ae60; 
-            --warning: #f39c12; --bg: #f8f9fa; --white: #ffffff; --text: #333;
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --warning: #f39c12;
+            --bg: #f8f9fa;
+            --white: #ffffff;
+            --text: #333;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: var(--bg); color: var(--text); padding-bottom: 60px; }
         
         header { background-color: var(--primary); color: var(--white); padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
         header h1 { font-size: 1.2rem; }
-        .btn-header { background: transparent; border: 1px solid rgba(255,255,255,0.6); color: var(--white); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+        .btn-header { background: transparent; border: 1px solid rgba(255,255,255,0.6); color: var(--white); padding: 6px 12px; border-radius: 6px; cursor: pointer; margin-left: 10px; }
         
         .tabs { display: flex; background: var(--white); border-bottom: 1px solid #ddd; position: sticky; top: 56px; z-index: 90; }
         .tab-btn { flex: 1; padding: 14px; text-align: center; cursor: pointer; border: none; background: none; font-weight: 500; color: #666; border-bottom: 3px solid transparent; }
@@ -31,22 +37,18 @@
         .btn-success { background-color: var(--success); }
         .btn-danger { background-color: var(--danger); }
         
-        table { width: 100%; border-collapse: collapse; background: var(--white); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; background: var(--white); }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
         th { background-color: #f4f6f8; color: #444; font-weight: 600; }
         
         .stock-ok { color: var(--success); font-weight: 700; }
-        .stock-low { color: var(--danger); font-weight: 700; } /* ROJO PARA STOCK BAJO */
+        .stock-low { color: var(--danger); font-weight: 700; }
         
         .action-group { display: flex; gap: 6px; justify-content: center; }
         .icon-btn { width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
         .icon-add { background: var(--success); color: white; }
         .icon-sub { background: var(--warning); color: white; }
         .icon-del { background: var(--danger); color: white; }
-
-        /* Estilo para opciones del select */
-        option.stock-available { color: var(--success); font-weight: bold; }
-        option.stock-empty { color: var(--danger); }
 
         @media (max-width: 600px) {
             .action-group { flex-direction: column; gap: 4px; }
@@ -58,8 +60,8 @@
 <body>
     <header>
         <h1>🍽️ Solinilla</h1>
-        <div style="display:flex; gap:10px;">
-            <button class="btn-header" onclick="openPrintView()">🖨️ Imprimir</button>
+        <div>
+            <button class="btn-header" onclick="downloadPDF()">📄 PDF</button>
             <button class="btn-header" onclick="logout()">Salir</button>
         </div>
     </header>
@@ -70,7 +72,6 @@
         <button class="tab-btn" onclick="switchTab('rep')">📊 Reportes</button>
     </div>
 
-    <!-- SECCIÓN INVENTARIO -->
     <div id="inv" class="section active">
         <div class="card">
             <h3>🔍 Buscar Producto</h3>
@@ -94,7 +95,6 @@
         </div>
     </div>
 
-    <!-- SECCIÓN MOVIMIENTOS -->
     <div id="mov" class="section">
         <div class="card">
             <h3>📝 Registrar Movimiento</h3>
@@ -110,7 +110,7 @@
             <label>Tipo:</label>
             <select id="mov-type">
                 <option value="entrada">🟢 Entrada</option>
-                <option value="salida"> Salida</option>
+                <option value="salida">🔴 Salida</option>
             </select>
             
             <label>Motivo:</label>
@@ -126,13 +126,12 @@
         </div>
     </div>
 
-    <!-- SECCIÓN REPORTES -->
     <div id="rep" class="section">
         <div class="card">
-            <h3>📥 Generar Reporte PDF</h3>
+            <h3>📥 Descargar PDF</h3>
             <label>Fecha:</label>
             <input type="date" id="report-date">
-            <button class="btn btn-primary" onclick="downloadPDF()"> Descargar PDF</button>
+            <button class="btn btn-primary" onclick="downloadPDF()">📄 Descargar PDF</button>
         </div>
         <div class="card" style="border: 2px solid var(--danger); background: #fff5f5;">
             <h3 style="color: var(--danger);">🔒 Cerrar Inventario</h3>
@@ -170,7 +169,18 @@
 
         async function loadInventory() {
             const data = await apiCall('/api/productos');
-            productsData = data.productos || [];
+            // Eliminar duplicados usando un Set de IDs
+            const uniqueProducts = [];
+            const seenIds = new Set();
+            
+            data.productos.forEach(p => {
+                if (!seenIds.has(p.id)) {
+                    seenIds.add(p.id);
+                    uniqueProducts.push(p);
+                }
+            });
+            
+            productsData = uniqueProducts;
             
             const tbody = document.querySelector('#inventory-table tbody');
             const searchSelect = document.getElementById('search-select');
@@ -181,11 +191,9 @@
             movSelect.innerHTML = '<option value="">-- Selecciona producto --</option>';
 
             productsData.forEach(p => {
-                // Lógica para ROJO si stock es bajo (< 10)
-                const isLow = p.stock < 10;
-                const stockClass = isLow ? 'stock-low' : 'stock-ok';
+                // Stock en ROJO si es bajo (< 10)
+                const stockClass = p.stock < 10 ? 'stock-low' : 'stock-ok';
                 
-                // Crear fila en tabla
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${p.id}</td>
@@ -200,10 +208,7 @@
                     </td>`;
                 tbody.appendChild(tr);
 
-                // Lógica para VERDE/ROJO en Select (Lista desplegable)
-                const optionHTML = `<option value="${p.id}" class="${p.stock > 0 ? 'stock-available' : 'stock-empty'}">
-                    ${p.nombre} (Stock: ${p.stock})
-                </option>`;
+                const optionHTML = `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`;
                 searchSelect.innerHTML += optionHTML;
                 movSelect.innerHTML += optionHTML;
             });
@@ -258,23 +263,16 @@
             tbody.innerHTML = '';
             (data.movimientos || []).forEach(m => {
                 const color = m.tipo === 'entrada' ? 'green' : 'red';
-                const icon = m.tipo === 'entrada' ? '🟢' : '';
+                const icon = m.tipo === 'entrada' ? '🟢' : '🔴';
                 const pName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
                 tbody.innerHTML += `<tr><td style="color:${color}">${icon} ${m.tipo}</td><td>${pName}</td><td>${m.cantidad}</td><td>${m.motivo || '-'}</td></tr>`;
             });
         }
 
-        async function openPrintView() {
-            const fecha = new Date().toISOString().split('T')[0];
-            const url = `${API_BASE}/api/reporte/imprimir?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.open(url, '_blank');
-        }
-
         async function downloadPDF() {
-            const fecha = document.getElementById('report-date').value;
-            if (!fecha) return alert('Selecciona fecha');
+            const fecha = document.getElementById('report-date').value || new Date().toISOString().split('T')[0];
             const url = `${API_BASE}/api/reporte/pdf?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.location.href = url;
+            window.open(url, '_blank');
         }
 
         async function cerrarInventario() {
