@@ -55,7 +55,7 @@ def init_db():
                 motivo TEXT, 
                 fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
         
-        # Tabla CIERRES DE INVENTARIO (NUEVA)
+        # Tabla CIERRES DE INVENTARIO
         if IS_LOCAL:
             cur.execute("""CREATE TABLE IF NOT EXISTS cierres_inventario (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

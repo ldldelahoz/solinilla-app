@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """Solinilla Inventory API - Con cierre de inventario diario"""
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
@@ -32,6 +33,45 @@ templates = Jinja2Templates(directory="templates")
 security = HTTPBearer()
 
 # === MODELOS PYDANTIC ===
+=======
+"""Solinilla Inventory API - Main Entry Point"""
+
+from fastapi import FastAPI, Depends, HTTPException, status, Form, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, JSONResponse
+from datetime import datetime, timedelta
+from typing import Optional, List
+from pydantic import BaseModel, Field
+import os
+import sys
+
+# === INSTANCIA DE FASTAPI (PRIMERO, antes de cualquier @app) ===
+app = FastAPI(
+    title="Solinilla Inventory API",
+    description="Sistema de inventario para restaurante",
+    version="1.0.0"
+)
+
+# === CORS ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# === Templates y Static ===
+templates = Jinja2Templates(directory="templates")
+
+# === Security ===
+security = HTTPBearer()
+
+# === Modelos Pydantic ===
+>>>>>>> 689b273a268eab275c927706c27abae2ce1d9aec
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -39,6 +79,7 @@ class LoginRequest(BaseModel):
 class ProductoCreate(BaseModel):
     id: str
     nombre: str
+<<<<<<< HEAD
     stock: float = 0.0
     fecha_vencimiento: Optional[str] = None
 
@@ -251,3 +292,237 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
 @app.get("/api/health")
 def health():
     return {"status": "alive", "app": "solinilla-api", "version": "2.0", "timestamp": datetime.utcnow().isoformat()}
+=======
+    stock: Optional[float] = 0
+    fecha_vencimiento: Optional[str] = None
+
+class MovimientoCreate(BaseModel):
+    id_prod: str
+    tipo: str  # "entrada" o "salida"
+    cantidad: float
+    motivo: Optional[str] = None
+
+# === ENDPOINTS PÚBLICOS ===
+
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    """Página de login."""
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Dashboard principal (requiere auth en frontend)."""
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.get("/api/health")
+async def health_check():
+    """Endpoint de salud para debug."""
+    return {
+        "status": "alive",
+        "app": "solinilla-final",
+        "timestamp": datetime.utcnow().isoformat(),
+        "python": sys.version
+    }
+
+# === AUTH ENDPOINTS ===
+
+@app.post("/api/login")
+async def login(data: LoginRequest):
+    """Login de usuario y generación de token JWT."""
+    from src.auth import verify_password, create_access_token
+    from src.inventory import obtener_usuario_por_username
+    
+    user = obtener_usuario_por_username(data.username)
+    
+    if not user or not verify_password(data.password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales incorrectas",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = create_access_token(data={"sub": user["username"], "rol": user["rol"]})
+    return {"access_token": token, "token_type": "bearer", "user": {"username": user["username"], "rol": user["rol"]}}
+
+# === DEPENDENCIAS DE AUTH ===
+
+async def get_current_user(authorization: Optional[str] = None):
+    """Extrae usuario desde header Authorization: Bearer <token>."""
+    from src.auth import decode_token
+    if not authorization:
+        return None
+    token = authorization.replace("Bearer ", "").strip()
+    payload = decode_token(token)
+    return payload if payload else None
+
+def require_admin(current_user: dict = Depends(get_current_user)):
+    """Verifica que el usuario sea admin."""
+    if not current_user or current_user.get("rol") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requiere permisos de administrador"
+        )
+    return current_user
+
+# === PRODUCTOS ENDPOINTS ===
+
+@app.get("/api/productos")
+async def obtener_productos(current_user: dict = Depends(get_current_user)):
+    """Obtiene todos los productos (requiere auth)."""
+    from src.inventory import obtener_productos
+    productos = obtener_productos()
+    return {"productos": productos}
+
+@app.post("/api/productos")
+async def crear_producto(
+    producto: ProductoCreate,
+    current_user: dict = Depends(require_admin)
+):
+    """Crea un nuevo producto (solo admin)."""
+    from src.inventory import crear_producto as create_prod_db
+    success, msg = create_prod_db(
+        producto.id,
+        producto.nombre,
+        producto.stock or 0,
+        producto.fecha_vencimiento
+    )
+    if success:
+        return {"msg": msg}
+    raise HTTPException(status_code=400, detail=msg)
+
+@app.delete("/api/productos/{producto_id}")
+async def eliminar_producto(
+    producto_id: str,
+    current_user: dict = Depends(require_admin)
+):
+    """Elimina un producto por ID (solo admin)."""
+    from src.inventory import eliminar_producto as delete_prod_db
+    success, msg = delete_prod_db(producto_id)
+    if success:
+        return {"msg": msg}
+    raise HTTPException(status_code=400, detail=msg)
+
+# === MOVIMIENTOS ENDPOINTS ===
+
+@app.get("/api/movimientos")
+async def obtener_movimientos(
+    fecha: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Obtiene movimientos, filtrando por fecha si se provee."""
+    from src.inventory import obtener_movimientos_dia
+    if not fecha:
+        fecha = datetime.now().date().isoformat()
+    movimientos = obtener_movimientos_dia(fecha)
+    return {"movimientos": movimientos}
+
+@app.post("/api/movimientos")
+async def registrar_movimiento(
+    movimiento: MovimientoCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Registra entrada o salida de producto."""
+    from src.inventory import registrar_movimiento as register_mov_db
+    success, msg = register_mov_db(
+        movimiento.id_prod,
+        movimiento.tipo,
+        movimiento.cantidad,
+        movimiento.motivo
+    )
+    if success:
+        return {"msg": msg}
+    raise HTTPException(status_code=400, detail=msg)
+
+# === CIERRE DE INVENTARIO ===
+
+@app.post("/api/inventario/cerrar")
+async def cerrar_inventario(
+    fecha: str = Form(...),
+    observaciones: str = Form(""),
+    current_user: dict = Depends(require_admin)
+):
+    """Cierra el inventario del día."""
+    from src.inventory import cerrar_inventario_dia
+    success, msg = cerrar_inventario_dia(fecha, observaciones)
+    if success:
+        return {"msg": msg}
+    raise HTTPException(status_code=400, detail=msg)
+
+# === INICIALIZACIÓN ===
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa la BD al arrancar."""
+    from src.db import init_db
+    init_db()
+
+
+
+# === ENDPOINT DE DEBUG PARA AUTH (eliminar después de probar) ===
+@app.get("/api/debug/auth-test")
+async def debug_auth_test():
+    """Prueba directa de verificación de contraseña."""
+    from src.auth import pwd_context, verify_password
+    
+    test_password = "Admin2026!"
+    
+    # Obtener hash real de la BD
+    from src.inventory import obtener_usuario_por_username
+    user = obtener_usuario_por_username("admin")
+    
+    if not user:
+        return {"error": "Usuario admin no encontrado en BD"}
+    
+    stored_hash = user.get("password_hash", "")
+    
+    # Verificar manualmente
+    is_valid = verify_password(test_password, stored_hash)
+    
+    return {
+        "password_tested": test_password,
+        "stored_hash_prefix": stored_hash.split("$")[1] if "$" in stored_hash else "unknown",
+        "pwd_context_schemes": list(pwd_context.schemes()),
+        "verification_result": is_valid,
+        "hash_match": stored_hash.startswith("$pbkdf2-sha256$")
+    }
+
+
+@app.get("/api/deep-debug")
+async def deep_debug_auth():
+    try:
+        from src.db import get_conn
+        from src.auth import verify_password, pwd_context
+        
+        response = {
+            "db_status": "checking...",
+            "user_found": False,
+            "hash_prefix": "N/A",
+            "password_check": "N/A",
+            "pwd_schemes": list(pwd_context.schemes())
+        }
+
+        # 1. Intentar conectar a la BD que usa Render
+        with get_conn() as conn:
+            response["db_status"] = "connected"
+            with conn.cursor() as cur:
+                # 2. Buscar usuario admin
+                cur.execute("SELECT username, password_hash FROM usuarios WHERE username = %s", ("admin",))
+                user = cur.fetchone()
+                
+                if user:
+                    response["user_found"] = True
+                    # Obtener el hash (compatible con dict y tuple)
+                    hash_val = user['password_hash'] if hasattr(user, 'keys') else user[1]
+                    response["hash_prefix"] = hash_val.split('$')[1] if '$' in hash_val else "unknown"
+                    
+                    # 3. Verificar la contraseña "Admin2026!" con el hash de la BD
+                    is_valid = verify_password("Admin2026!", hash_val)
+                    response["password_check"] = "✅ CORRECTO" if is_valid else "❌ INCORRECTO"
+                else:
+                    response["error"] = "El usuario 'admin' NO EXISTE en esta base de datos."
+                    
+        return response
+
+    except Exception as e:
+        return {"error": str(e), "trace": str(e)}
+>>>>>>> 689b273a268eab275c927706c27abae2ce1d9aec

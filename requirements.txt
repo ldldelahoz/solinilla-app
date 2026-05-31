@@ -1,8 +1,15 @@
 fastapi==0.115.5
 uvicorn==0.30.6
 python-jose==3.3.0
+<<<<<<< HEAD
 passlib==1.7.4
 python-multipart==0.0.9
 jinja2==3.1.4
 psycopg2-binary>=2.9.9
 reportlab==4.0.9
+=======
+passlib[pbkdf2]==1.7.4
+python-multipart==0.0.9
+jinja2==3.1.4
+psycopg2-binary==2.9.9
+>>>>>>> 689b273a268eab275c927706c27abae2ce1d9aec
