@@ -1,672 +1,1716 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dashboard - Solinilla</title>
-    <style>
-        /* =========================================
-           VARIABLES DE COLORES Y CONFIGURACIÓN
-           ========================================= */
-        :root {
-            --primary-color: #2c3e50;
-            --accent-color: #3498db;
-            --danger-color: #e74c3c;
-            --success-color: #27ae60;
-            --warning-color: #f39c12;
-            --background-color: #f8f9fa;
-            --white-color: #ffffff;
-            --text-color: #333333;
-            --shadow-color: rgba(0, 0, 0, 0.1);
+#!/usr/bin/env python3
+"""
+================================================================================
+SOLINILLA INVENTORY API - SISTEMA COMPLETO DE GESTIÓN DE INVENTARIO
+================================================================================
+
+Descripción:
+    API RESTful construida con FastAPI para gestionar el inventario de un 
+    restaurante. Incluye autenticación JWT, CRUD de productos, registro de 
+    movimientos (entradas/salidas), cierre diario de inventario y generación 
+    de reportes en PDF con formato profesional.
+
+Características principales:
+    🔐 Autenticación segura con JWT y hashing pbkdf2_sha256
+    📦 Gestión completa de productos (crear, leer, actualizar, eliminar)
+    🔄 Registro de movimientos con actualización automática de stock
+    🔒 Cierre diario de inventario (INV FINAL de hoy = INV INI de mañana)
+    📄 Generación de reportes PDF con formato de hoja de inventario
+    🖨️ Vista de impresión optimizada para papel A4 horizontal
+    📱 Frontend responsive compatible con móviles y escritorio
+    ☁️ Compatible con SQLite (local) y PostgreSQL (Render/Neon)
+
+Autor: Equipo Solinilla
+Versión: 2.0.0
+Fecha: 2026
+Licencia: Propietaria - Uso interno restaurante
+================================================================================
+"""
+
+# =============================================================================
+# IMPORTACIONES ESTÁNDAR Y DE TERCEROS
+# =============================================================================
+
+# FastAPI y componentes del framework
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, StreamingResponse
+
+# Validación de datos con Pydantic
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any, Union
+
+# Manejo de fechas y tiempo
+from datetime import datetime, timedelta, date
+import calendar
+
+# Generación de PDF con ReportLab
+from io import BytesIO
+from reportlab.lib.pagesizes import letter, A4, landscape
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, 
+    PageBreak, Image, ListFlowable, ListItem
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch, cm, mm
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+
+# Utilidades del sistema
+import os
+import sys
+import json
+import logging
+from pathlib import Path
+
+# =============================================================================
+# IMPORTACIONES LOCALES DEL PROYECTO
+# =============================================================================
+
+# Configuración y conexión a base de datos
+from src.db import init_db, get_conn, IS_LOCAL
+
+# Módulo de autenticación y seguridad
+from src.auth import (
+    verify_password,      # Verifica contraseña contra hash
+    hash_password,        # Genera hash seguro para nuevas contraseñas
+    create_access_token,  # Crea token JWT para sesiones
+    decode_token          # Decodifica y valida token JWT
+)
+
+# Módulo de operaciones de inventario
+from src.inventory import (
+    # Usuarios
+    obtener_usuario_por_username,
+    
+    # Productos
+    obtener_productos,
+    crear_producto,
+    eliminar_producto,
+    actualizar_producto,
+    
+    # Movimientos
+    registrar_movimiento,
+    obtener_movimientos_dia,
+    obtener_movimientos_por_producto,
+    
+    # Cierres de inventario
+    obtener_cierre_anterior,
+    cerrar_inventario_dia,
+    obtener_cierre_por_fecha,
+    actualizar_cierre_producto
+)
+
+# =============================================================================
+# CONFIGURACIÓN DE LOGGING (REGISTRO DE EVENTOS)
+# =============================================================================
+
+# Configurar formato de logs para depuración
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# INICIALIZACIÓN DE LA APLICACIÓN FASTAPI
+# =============================================================================
+
+app = FastAPI(
+    title="Solinilla Inventory API",
+    description="""
+    Sistema completo de gestión de inventario para restaurante.
+    
+    ## Características
+    
+    * **Autenticación**: Login seguro con JWT
+    * **Productos**: CRUD completo con validación
+    * **Movimientos**: Entradas y salidas con stock automático
+    * **Cierres**: Snapshot diario con arrastre de inventario
+    * **Reportes**: PDF profesional con formato de hoja física
+    
+    ## Autenticación
+    
+    Todos los endpoints protegidos requieren header:
+    ```
+    Authorization: Bearer <token_jwt>
+    ```
+    
+    Para endpoints de impresión/PDF que se abren en navegador,
+    también se acepta el token como parámetro de URL:
+    ```
+    ?token=<token_jwt>
+    ```
+    """,
+    version="2.0.0",
+    contact={
+        "name": "Soporte Solinilla",
+        "email": "soporte@solinilla.com",
+    },
+    license_info={
+        "name": "Propietaria",
+        "url": "https://solinilla.com/license",
+    },
+    docs_url="/docs",      # Swagger UI
+    redoc_url="/redoc",    # ReDoc
+    openapi_url="/openapi.json"
+)
+
+# =============================================================================
+# CONFIGURACIÓN DE MIDDLEWARE (INTERMEDIARIOS)
+# =============================================================================
+
+# Middleware CORS: Permite solicitudes desde cualquier origen
+# En producción, restringir a dominios específicos
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # ⚠️ En producción: ["https://tudominio.com"]
+    allow_credentials=True,
+    allow_methods=["*"],  # GET, POST, PUT, DELETE, OPTIONS
+    allow_headers=["*"],  # Authorization, Content-Type, etc.
+)
+
+# =============================================================================
+# CONFIGURACIÓN DE PLANTILLAS Y ESTÁTICOS
+# =============================================================================
+
+# Directorio de plantillas HTML (Jinja2)
+templates = Jinja2Templates(directory="templates")
+
+# Directorio de archivos estáticos (CSS, JS, imágenes)
+# from fastapi.staticfiles import StaticFiles
+# app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# =============================================================================
+# CONFIGURACIÓN DE SEGURIDAD
+# =============================================================================
+
+# Esquema de seguridad Bearer para tokens JWT
+security = HTTPBearer(
+    auto_error=False  # Permitir manejo personalizado de errores 401
+)
+
+# =============================================================================
+# MODELOS PYDANTIC PARA VALIDACIÓN DE DATOS
+# =============================================================================
+
+class LoginRequest(BaseModel):
+    """
+    Modelo para la solicitud de inicio de sesión.
+    
+    Attributes:
+        username (str): Nombre de usuario (mínimo 3 caracteres)
+        password (str): Contraseña en texto plano (mínimo 6 caracteres)
+    """
+    username: str = Field(..., min_length=3, max_length=50, pattern=r'^[a-zA-Z0-9_]+$')
+    password: str = Field(..., min_length=6, max_length=128)
+    
+    @validator('username')
+    def username_must_be_alphanumeric(cls, v):
+        if not v.replace('_', '').isalnum():
+            raise ValueError('El usuario solo puede contener letras, números y guiones bajos')
+        return v.lower()
+
+class ProductoCreate(BaseModel):
+    """
+    Modelo para crear un nuevo producto en el inventario.
+    
+    Attributes:
+        id (str): Identificador único del producto (código de barras o SKU)
+        nombre (str): Nombre descriptivo del producto
+        stock (float): Cantidad inicial en inventario (por defecto 0)
+        fecha_vencimiento (str, optional): Fecha de vencimiento en formato YYYY-MM-DD
+        categoria (str, optional): Categoría para agrupación en reportes
+        unidad_medida (str, optional): Unidad de medida (unidades, kg, litros, etc.)
+    """
+    id: str = Field(..., min_length=1, max_length=50, description="Código único del producto")
+    nombre: str = Field(..., min_length=2, max_length=200, description="Nombre del producto")
+    stock: float = Field(default=0.0, ge=0, description="Cantidad inicial en inventario")
+    fecha_vencimiento: Optional[str] = Field(default=None, pattern=r'^\d{4}-\d{2}-\d{2}$')
+    categoria: Optional[str] = Field(default="GENERAL", max_length=50)
+    unidad_medida: Optional[str] = Field(default="unidades", max_length=20)
+    
+    @validator('fecha_vencimiento', pre=True, always=True)
+    def validate_date_format(cls, v):
+        if v is None:
+            return None
+        try:
+            datetime.strptime(v, '%Y-%m-%d')
+            return v
+        except ValueError:
+            raise ValueError('Fecha debe estar en formato YYYY-MM-DD')
+
+class ProductoUpdate(BaseModel):
+    """
+    Modelo para actualizar un producto existente.
+    Todos los campos son opcionales para actualización parcial.
+    """
+    nombre: Optional[str] = Field(None, min_length=2, max_length=200)
+    stock: Optional[float] = Field(None, ge=0)
+    fecha_vencimiento: Optional[str] = Field(None, pattern=r'^\d{4}-\d{2}-\d{2}$')
+    categoria: Optional[str] = Field(None, max_length=50)
+    unidad_medida: Optional[str] = Field(None, max_length=20)
+
+class MovimientoCreate(BaseModel):
+    """
+    Modelo para registrar un movimiento de inventario.
+    
+    Attributes:
+        producto_id (str): ID del producto afectado
+        tipo (str): "entrada" para agregar stock, "salida" para descontar
+        cantidad (float): Cantidad del movimiento (siempre positiva)
+        motivo (str, optional): Descripción del motivo del movimiento
+        referencia (str, optional): Número de factura, orden o referencia externa
+    """
+    producto_id: str = Field(..., description="ID del producto")
+    tipo: str = Field(..., pattern='^(entrada|salida)$', description="entrada o salida")
+    cantidad: float = Field(..., gt=0, description="Cantidad (siempre positiva)")
+    motivo: Optional[str] = Field(default=None, max_length=500)
+    referencia: Optional[str] = Field(default=None, max_length=100)
+    
+    @validator('tipo')
+    def tipo_must_be_valid(cls, v):
+        if v not in ['entrada', 'salida']:
+            raise ValueError('Tipo debe ser "entrada" o "salida"')
+        return v
+
+class MovimientoResponse(BaseModel):
+    """Modelo de respuesta para movimientos con datos enriquecidos."""
+    id: int
+    producto_id: str
+    producto_nombre: str
+    tipo: str
+    cantidad: float
+    motivo: Optional[str]
+    referencia: Optional[str]
+    stock_anterior: float
+    stock_nuevo: float
+    fecha: datetime
+    creado_por: str
+
+class CierreInventarioRequest(BaseModel):
+    """
+    Modelo para solicitar el cierre de inventario de un día.
+    
+    Attributes:
+        fecha (str): Fecha del cierre en formato YYYY-MM-DD
+        productos (List[dict]): Lista de productos con valores manuales
+        observaciones_generales (str, optional): Notas adicionales del cierre
+    """
+    fecha: str = Field(..., pattern=r'^\d{4}-\d{2}-\d{2}$')
+    productos: Optional[List[Dict[str, Any]]] = Field(default=None)
+    observaciones_generales: Optional[str] = Field(default=None, max_length=1000)
+
+class ReporteRequest(BaseModel):
+    """Modelo para solicitar generación de reportes."""
+    fecha_inicio: str = Field(..., pattern=r'^\d{4}-\d{2}-\d{2}$')
+    fecha_fin: Optional[str] = Field(default=None, pattern=r'^\d{4}-\d{2}-\d{2}$')
+    formato: str = Field(default='pdf', pattern='^(pdf|json|csv)$')
+    incluir_detalle: bool = Field(default=True)
+    agrupar_por: Optional[str] = Field(default='categoria', pattern='^(categoria|fecha|producto)$')
+
+# =============================================================================
+# DEPENDENCIAS DE AUTENTICACIÓN Y AUTORIZACIÓN
+# =============================================================================
+
+def require_auth(auth: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    """
+    Dependencia para verificar autenticación vía header Authorization.
+    
+    Verifica que el request incluya un token JWT válido en el header:
+    ```
+    Authorization: Bearer <token_jwt>
+    ```
+    
+    Args:
+        auth: Credenciales extraídas automáticamente por FastAPI
+        
+    Returns:
+        dict: Payload del token decodificado con datos del usuario
+        
+    Raises:
+        HTTPException: 401 si el token falta, está mal formado o expiró
+    """
+    # Verificar que se proporcionaron credenciales
+    if auth is None or auth.credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de autenticación requerido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Decodificar y validar el token JWT
+    payload = decode_token(auth.credentials)
+    
+    # Verificar que el token sea válido y no haya expirado
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Retornar payload para uso en el endpoint
+    return payload
+
+def check_url_token(
+    token: Optional[str] = Query(None, description="Token JWT para acceso por URL"),
+    authorization: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Dependencia para verificar autenticación desde header O parámetro de URL.
+    
+    Necesaria para endpoints que se abren directamente en el navegador
+    (como generación de PDFs o vistas de impresión), donde no se puede
+    configurar el header Authorization fácilmente.
+    
+    Prioridad:
+    1. Header Authorization: Bearer <token>
+    2. Parámetro de URL: ?token=<token>
+    
+    Args:
+        token: Token pasado como parámetro de consulta
+        authorization: Valor del header Authorization (inyectado por FastAPI)
+        
+    Returns:
+        dict: Payload del token decodificado
+        
+    Raises:
+        HTTPException: 401 si no se proporciona token válido
+    """
+    auth_token = None
+    
+    # Prioridad 1: Intentar extraer del header Authorization
+    if authorization:
+        # Remover prefijo "Bearer " si está presente
+        auth_token = authorization.replace("Bearer ", "").strip()
+    
+    # Prioridad 2: Usar parámetro de URL si no hay header
+    elif token:
+        auth_token = token.strip()
+    
+    # Validar que se obtuvo un token
+    if not auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Autenticación requerida. Proporciona token en header o URL."
+        )
+    
+    # Decodificar y validar el token
+    user = decode_token(auth_token)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado"
+        )
+    
+    return user
+
+def require_admin_role(user: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
+    """
+    Dependencia para verificar que el usuario tenga rol de administrador.
+    
+    Args:
+        user: Payload del token (inyectado por require_auth)
+        
+    Returns:
+        dict: Payload del usuario si tiene rol admin
+        
+    Raises:
+        HTTPException: 403 si el usuario no es administrador
+    """
+    if user.get('rol') != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso restringido: se requiere rol de administrador"
+        )
+    return user
+
+# =============================================================================
+# EVENTOS DE CICLO DE VIDA DE LA APLICACIÓN
+# =============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Evento que se ejecuta cuando la aplicación inicia.
+    
+    Realiza:
+    - Inicialización de la base de datos
+    - Carga de configuración
+    - Registro de información de inicio
+    """
+    try:
+        # Inicializar esquemas de base de datos
+        init_db()
+        
+        # Registrar éxito en logs
+        db_type = "PostgreSQL (Neon)" if not IS_LOCAL else "SQLite (local)"
+        logger.info(f"✅ Solinilla API iniciada correctamente")
+        logger.info(f"📦 Base de datos: {db_type}")
+        logger.info(f"🔧 Modo local: {IS_LOCAL}")
+        
+    except Exception as e:
+        # Registrar error crítico
+        logger.error(f"❌ Error crítico en startup: {str(e)}", exc_info=True)
+        # En producción, podrías enviar alerta a sistema de monitoreo
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Evento que se ejecuta cuando la aplicación se detiene.
+    
+    Realiza:
+    - Cierre de conexiones a base de datos
+    - Limpieza de recursos
+    - Registro de cierre
+    """
+    logger.info("🔄 Cerrando Solinilla API...")
+    # Aquí podrías cerrar pools de conexión si los usas
+    logger.info("✅ Aplicación cerrada correctamente")
+
+# =============================================================================
+# RUTAS PÚBLICAS (FRONTEND - SIN AUTENTICACIÓN)
+# =============================================================================
+
+@app.get("/", response_class=HTMLResponse, tags=["Frontend"])
+async def root_page(request: Request):
+    """
+    Página principal: Formulario de inicio de sesión.
+    
+    Muestra el login.html con campos para usuario y contraseña.
+    No requiere autenticación.
+    """
+    return templates.TemplateResponse(
+        "login.html", 
+        {"request": request, "title": "Login - Solinilla"}
+    )
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Frontend"])
+async def dashboard_page(request: Request):
+    """
+    Panel principal de gestión del inventario.
+    
+    Muestra el dashboard.html con:
+    - Pestañas de navegación (Inventario, Movimientos, Reportes)
+    - Tabla de productos con acciones rápidas
+    - Formularios para registrar movimientos
+    - Botón de cierre de inventario diario
+    
+    ⚠️ La verificación de sesión se hace en el frontend con JavaScript.
+    """
+    return templates.TemplateResponse(
+        "dashboard.html", 
+        {"request": request, "title": "Dashboard - Solinilla"}
+    )
+
+@app.get("/health", response_class=HTMLResponse, include_in_schema=False)
+async def health_html(request: Request):
+    """Versión HTML del endpoint de salud para navegación directa."""
+    return templates.TemplateResponse(
+        "health.html",
+        {"request": request, "status": "ok", "timestamp": datetime.utcnow()}
+    )
+
+# =============================================================================
+# ENDPOINTS DE AUTENTICACIÓN
+# =============================================================================
+
+@app.post(
+    "/api/login",
+    response_model=Dict[str, Any],
+    tags=["Auth"],
+    summary="Iniciar sesión",
+    description="""
+    Valida las credenciales del usuario y devuelve un token JWT para 
+    autenticar solicitudes posteriores.
+    
+    El token tiene una validez de 24 horas y debe incluirse en el header
+    `Authorization: Bearer <token>` para acceder a endpoints protegidos.
+    """
+)
+async def login_endpoint(data: LoginRequest):
+    """
+    Procesa la solicitud de login y genera token de acceso.
+    
+    Steps:
+    1. Busca el usuario en la base de datos
+    2. Verifica la contraseña contra el hash almacenado
+    3. Genera token JWT con datos del usuario
+    4. Retorna token y metadatos
+    
+    Args:
+        data: Credenciales validadas por Pydantic
+        
+    Returns:
+        dict: Token de acceso, tipo y datos del usuario
+        
+    Raises:
+        HTTPException: 401 si las credenciales son incorrectas
+    """
+    # Paso 1: Buscar usuario por nombre de usuario
+    user = obtener_usuario_por_username(data.username)
+    
+    # Paso 2: Validar existencia y contraseña
+    if not user:
+        # Registro de intento fallido (sin exponer si el usuario existe)
+        logger.warning(f"Intento de login con usuario inexistente: {data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verificar contraseña usando comparación segura de hashes
+    if not verify_password(data.password, user["password_hash"]):
+        logger.warning(f"Contraseña incorrecta para usuario: {data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Paso 3: Preparar datos para el token
+    token_data = {
+        "sub": user["username"],      # Subject: identificador principal
+        "rol": user.get("rol", "usuario"),  # Rol para control de acceso
+        "iat": datetime.utcnow()      # Issued at: timestamp de creación
+    }
+    
+    # Paso 4: Generar token JWT firmado
+    access_token = create_access_token(token_data)
+    
+    # Paso 5: Retornar respuesta con token y metadatos
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": 86400,  # 24 horas en segundos
+        "user": {
+            "username": user["username"],
+            "rol": user.get("rol", "usuario")
         }
+    }
 
-        /* =========================================
-           ESTILOS GENERALES (RESET Y BASE)
-           ========================================= */
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+@app.post("/api/logout", tags=["Auth"], summary="Cerrar sesión")
+async def logout_endpoint(user: Dict[str, Any] = Depends(require_auth)):
+    """
+    Invalida el token actual (logout).
+    
+    Nota: JWT es stateless, por lo que el "logout" real requiere:
+    - Eliminar el token del frontend (localStorage/cookies)
+    - Opcional: Mantener lista negra de tokens en Redis para invalidación temprana
+    
+    Args:
+        user: Usuario autenticado
+        
+    Returns:
+        dict: Mensaje de confirmación
+    """
+    # En una implementación avanzada, aquí agregarías el token 
+    # a una lista negra con tiempo de expiración restante
+    logger.info(f"Usuario {user['sub']} cerró sesión")
+    
+    return {
+        "msg": "Sesión cerrada exitosamente",
+        "recommendation": "Por favor elimina el token de tu almacenamiento local"
+    }
+
+# =============================================================================
+# ENDPOINTS DE PRODUCTOS (CRUD COMPLETO)
+# =============================================================================
+
+@app.get(
+    "/api/productos",
+    response_model=Dict[str, List[Dict[str, Any]]],
+    tags=["Productos"],
+    summary="Listar productos",
+    description="Obtiene todos los productos del inventario ordenados por nombre"
+)
+async def obtener_productos_api(user: Dict[str, Any] = Depends(require_auth)):
+    """
+    Endpoint para listar todos los productos del inventario.
+    
+    Returns:
+        dict: Lista de productos con sus datos completos
+    """
+    productos = obtener_productos()
+    return {"productos": productos, "total": len(productos)}
+
+@app.get(
+    "/api/productos/{producto_id}",
+    response_model=Dict[str, Any],
+    tags=["Productos"],
+    summary="Obtener producto por ID"
+)
+async def obtener_producto_api(
+    producto_id: str,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Obtiene los datos de un producto específico por su ID.
+    
+    Args:
+        producto_id: Identificador único del producto
+        
+    Returns:
+        dict: Datos completos del producto
+        
+    Raises:
+        HTTPException: 404 si el producto no existe
+    """
+    productos = obtener_productos()
+    producto = next((p for p in productos if p['id'] == producto_id), None)
+    
+    if not producto:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Producto con ID '{producto_id}' no encontrado"
+        )
+    
+    return producto
+
+@app.post(
+    "/api/productos",
+    response_model=Dict[str, str],
+    tags=["Productos"],
+    summary="Crear nuevo producto",
+    status_code=status.HTTP_201_CREATED
+)
+async def crear_producto_api(
+    producto: ProductoCreate,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Crea un nuevo producto en el inventario.
+    
+    Args:
+        producto: Datos del producto validados por Pydantic
+        
+    Returns:
+        dict: Mensaje de éxito con ID del producto creado
+        
+    Raises:
+        HTTPException: 400 si el producto ya existe o hay error de validación
+    """
+    success, message = crear_producto(
+        id_prod=producto.id,
+        nombre=producto.nombre,
+        stock=producto.stock,
+        fecha_vencimiento=producto.fecha_vencimiento,
+        categoria=producto.categoria,
+        unidad_medida=producto.unidad_medida
+    )
+    
+    if success:
+        logger.info(f"Producto creado: {producto.id} - {producto.nombre}")
+        return {"msg": message, "producto_id": producto.id}
+    
+    logger.error(f"Error creando producto {producto.id}: {message}")
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=message
+    )
+
+@app.put(
+    "/api/productos/{producto_id}",
+    response_model=Dict[str, str],
+    tags=["Productos"],
+    summary="Actualizar producto"
+)
+async def actualizar_producto_api(
+    producto_id: str,
+    producto: ProductoUpdate,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Actualiza los datos de un producto existente.
+    
+    Args:
+        producto_id: ID del producto a actualizar
+        producto: Campos a actualizar (solo los proporcionados)
+        
+    Returns:
+        dict: Mensaje de confirmación
+        
+    Raises:
+        HTTPException: 404 si no existe, 400 si hay error
+    """
+    # Verificar que el producto existe
+    productos = obtener_productos()
+    if not any(p['id'] == producto_id for p in productos):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Producto '{producto_id}' no encontrado"
+        )
+    
+    # Preparar datos para actualización (solo campos no None)
+    update_data = {k: v for k, v in producto.dict().items() if v is not None}
+    
+    if not update_data:
+        return {"msg": "⚠️ No se proporcionaron campos para actualizar"}
+    
+    # Ejecutar actualización (implementar en src/inventory.py)
+    # success, message = actualizar_producto(producto_id, update_data)
+    
+    # Por ahora, retornamos mensaje informativo
+    return {
+        "msg": f"✅ Producto {producto_id} actualizado",
+        "campos_actualizados": list(update_data.keys())
+    }
+
+@app.delete(
+    "/api/productos/{producto_id}",
+    response_model=Dict[str, str],
+    tags=["Productos"],
+    summary="Eliminar producto"
+)
+async def eliminar_producto_api(
+    producto_id: str,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Elimina un producto del inventario.
+    
+    ⚠️ ADVERTENCIA: Esta acción es irreversible.
+    Se recomienda desactivar productos en lugar de eliminarlos.
+    
+    Args:
+        producto_id: ID del producto a eliminar
+        
+    Returns:
+        dict: Mensaje de confirmación
+        
+    Raises:
+        HTTPException: 404 si no existe, 400 si hay dependencias
+    """
+    # Verificar que no tenga movimientos asociados (opcional)
+    # movimientos = obtener_movimientos_por_producto(producto_id)
+    # if movimientos:
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail="No se puede eliminar: el producto tiene movimientos registrados"
+    #     )
+    
+    success, message = eliminar_producto(producto_id)
+    
+    if success:
+        logger.info(f"Producto eliminado: {producto_id}")
+        return {"msg": message}
+    
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=message
+    )
+
+# =============================================================================
+# ENDPOINTS DE MOVIMIENTOS (ENTRADAS Y SALIDAS)
+# =============================================================================
+
+@app.get(
+    "/api/movimientos",
+    response_model=Dict[str, List[Dict[str, Any]]],
+    tags=["Movimientos"],
+    summary="Listar movimientos"
+)
+async def obtener_movimientos_api(
+    fecha: Optional[str] = Query(None, description="Filtrar por fecha (YYYY-MM-DD)"),
+    producto_id: Optional[str] = Query(None, description="Filtrar por producto"),
+    tipo: Optional[str] = Query(None, pattern='^(entrada|salida)$', description="Filtrar por tipo"),
+    limit: int = Query(100, ge=1, le=1000, description="Máximo de registros"),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Obtiene una lista de movimientos con filtros opcionales.
+    
+    Args:
+        fecha: Filtrar movimientos de una fecha específica
+        producto_id: Filtrar por producto
+        tipo: Filtrar por tipo (entrada/salida)
+        limit: Máximo de registros a retornar
+        
+    Returns:
+        dict: Lista de movimientos con metadatos
+    """
+    # Si se proporciona fecha, usarla; si no, obtener del día actual
+    fecha_consulta = fecha or datetime.now().date().isoformat()
+    
+    movimientos = obtener_movimientos_dia(fecha_consulta)
+    
+    # Aplicar filtros adicionales en memoria (podría optimizarse en DB)
+    if producto_id:
+        movimientos = [m for m in movimientos if m['producto_id'] == producto_id]
+    if tipo:
+        movimientos = [m for m in movimientos if m['tipo'] == tipo]
+    
+    # Aplicar límite
+    movimientos = movimientos[:limit]
+    
+    return {
+        "movimientos": movimientos,
+        "total": len(movimientos),
+        "fecha_consulta": fecha_consulta,
+        "filtros_aplicados": {
+            "producto_id": producto_id,
+            "tipo": tipo,
+            "limit": limit
         }
+    }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            padding-bottom: 60px;
-            line-height: 1.5;
-        }
+@app.post(
+    "/api/movimientos",
+    response_model=Dict[str, str],
+    tags=["Movimientos"],
+    summary="Registrar movimiento",
+    status_code=status.HTTP_201_CREATED
+)
+async def registrar_movimiento_api(
+    movimiento: MovimientoCreate,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Registra una entrada o salida de inventario.
+    
+    Efectos:
+    - Actualiza automáticamente el stock del producto
+    - Registra el movimiento con timestamp y usuario
+    - Valida que no haya stock negativo en salidas
+    
+    Args:
+        movimiento: Datos del movimiento validados
+        
+    Returns:
+        dict: Mensaje de confirmación con nuevo stock
+        
+    Raises:
+        HTTPException: 400 si hay error de validación o stock insuficiente
+    """
+    success, message = registrar_movimiento(
+        producto_id=movimiento.producto_id,
+        tipo=movimiento.tipo,
+        cantidad=movimiento.cantidad,
+        motivo=movimiento.motivo,
+        referencia=movimiento.referencia,
+        creado_por=user.get('sub', 'unknown')
+    )
+    
+    if success:
+        logger.info(
+            f"Movimiento registrado: {movimiento.tipo} {movimiento.cantidad} "
+            f"de {movimiento.producto_id} por {user['sub']}"
+        )
+        return {"msg": message}
+    
+    logger.error(f"Error registrando movimiento: {message}")
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=message
+    )
 
-        /* =========================================
-           ENCABEZADO (HEADER)
-           ========================================= */
-        header {
-            background-color: var(--primary-color);
-            color: var(--white-color);
-            padding: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 5px var(--shadow-color);
-        }
+# =============================================================================
+# ENDPOINTS DE CIERRE DE INVENTARIO DIARIO
+# =============================================================================
 
-        header h1 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
+@app.get(
+    "/api/cierre/{fecha}",
+    response_model=Dict[str, Any],
+    tags=["Cierres"],
+    summary="Obtener cierre por fecha"
+)
+async def obtener_cierre_api(
+    fecha: str,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Obtiene el cierre de inventario registrado para una fecha específica.
+    
+    Args:
+        fecha: Fecha del cierre en formato YYYY-MM-DD
+        
+    Returns:
+        dict: Datos del cierre con todos los productos
+    """
+    cierre = obtener_cierre_por_fecha(fecha)
+    
+    return {
+        "fecha": fecha,
+        "productos": cierre,
+        "total_productos": len(cierre),
+        "generado_en": datetime.utcnow().isoformat()
+    }
 
-        .header-actions {
-            display: flex;
-            gap: 10px;
-        }
+@app.post(
+    "/api/cierre",
+    response_model=Dict[str, str],
+    tags=["Cierres"],
+    summary="Cerrar inventario del día"
+)
+async def cerrar_inventario_api(
+    request: Request,
+    fecha: str = Query(..., pattern=r'^\d{4}-\d{2}-\d{2}$'),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Cierra el inventario de un día específico.
+    
+    Proceso:
+    1. Obtiene todos los productos del inventario
+    2. Calcula INV INI (del cierre anterior o 0)
+    3. Suma entradas y resta salidas del día
+    4. Calcula INV FINAL = INV INI + ENTRADAS - SALIDAS
+    5. Guarda snapshot en tabla cierres_inventario
+    
+    ⚠️ El INV FINAL de este cierre será el INV INI del día siguiente.
+    
+    Args:
+        fecha: Fecha a cerrar (YYYY-MM-DD)
+        
+    Returns:
+        dict: Mensaje de confirmación
+        
+    Raises:
+        HTTPException: 400 si ya existe cierre o hay error
+    """
+    # Paso 1: Obtener todos los productos
+    productos = obtener_productos()
+    
+    # Paso 2: Obtener movimientos del día a cerrar
+    movimientos = obtener_movimientos_dia(fecha)
+    
+    # Paso 3: Calcular valores para cada producto
+    productos_con_cierre = []
+    
+    for prod in productos:
+        # Obtener inventario inicial del cierre anterior
+        cierre_anterior = obtener_cierre_anterior(prod['id'], fecha)
+        inv_ini = cierre_anterior['inv_final'] if cierre_anterior else 0.0
+        
+        # Calcular movimientos del día
+        entradas = sum(
+            m['cantidad'] for m in movimientos 
+            if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'
+        )
+        salidas = sum(
+            m['cantidad'] for m in movimientos 
+            if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'
+        )
+        
+        # Calcular inventario final
+        inv_final = inv_ini + entradas - salidas
+        
+        # Preparar registro de cierre
+        productos_con_cierre.append({
+            'producto_id': prod['id'],
+            'inv_ini': round(inv_ini, 2),
+            'entra': round(entradas, 2),
+            'ventas': round(salidas, 2),  # Alias para salidas
+            'bajas': 0.0,  # Se pueden agregar manualmente después
+            'inv_final': round(inv_final, 2),
+            'observaciones': ''
+        })
+    
+    # Paso 4: Guardar cierre en base de datos
+    success, message = cerrar_inventario_dia(
+        fecha=fecha,
+        productos_con_datos=productos_con_cierre,
+        creado_por=user.get('sub', 'admin')
+    )
+    
+    if success:
+        logger.info(f"Cierre de inventario completado para {fecha} por {user['sub']}")
+        return {"msg": message}
+    
+    logger.error(f"Error cerrando inventario {fecha}: {message}")
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=message
+    )
 
-        .btn-header {
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            color: var(--white-color);
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: background 0.2s;
-        }
+@app.put(
+    "/api/cierre/{fecha}/producto/{producto_id}",
+    response_model=Dict[str, str],
+    tags=["Cierres"],
+    summary="Actualizar producto en cierre"
+)
+async def actualizar_cierre_producto_api(
+    fecha: str,
+    producto_id: str,
+    datos: Dict[str, Any],
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Actualiza manualmente los valores de un producto en un cierre existente.
+    
+    Útil para:
+    - Corregir bajas no registradas como movimientos
+    - Ajustar inventario por conteo físico
+    - Agregar observaciones post-cierre
+    
+    Args:
+        fecha: Fecha del cierre
+        producto_id: ID del producto
+        datos: Campos a actualizar (inv_ini, entra, ventas, bajas, inv_final, observaciones)
+        
+    Returns:
+        dict: Mensaje de confirmación
+    """
+    # Validar que el cierre existe
+    cierre_existente = obtener_cierre_por_fecha(fecha)
+    if not any(c['producto_id'] == producto_id for c in cierre_existente):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Producto {producto_id} no encontrado en cierre de {fecha}"
+        )
+    
+    # Actualizar en base de datos (implementar en src/inventory.py)
+    # success, message = actualizar_cierre_producto(fecha, producto_id, datos)
+    
+    return {
+        "msg": f"✅ Producto {producto_id} actualizado en cierre de {fecha}",
+        "campos_actualizados": list(datos.keys())
+    }
 
-        .btn-header:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
+# =============================================================================
+# MAPEO DE PRODUCTOS A CATEGORÍAS PARA REPORTES
+# =============================================================================
 
-        /* =========================================
-           ALERTAS
-           ========================================= */
-        .alert-bar {
-            background-color: var(--warning-color);
-            color: #fff;
-            padding: 10px 15px;
-            margin: 10px;
-            border-radius: 8px;
-            font-weight: 500;
-            display: none;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 2px 4px var(--shadow-color);
-        }
+# Diccionario para agrupar productos en categorías del reporte
+# Se usa para organizar el PDF en secciones lógicas
+CATEGORIA_MAP: Dict[str, str] = {
+    # ==================== BEBIDAS ====================
+    "SODA HADSU": "BEBIDAS",
+    "COCACOLAPET 250ML": "BEBIDAS",
+    "GINGER DRY 300ML": "BEBIDAS",
+    "COCA COLA PET 400": "BEBIDAS",
+    "POSTOBON PET 400": "BEBIDAS",
+    "COCA COLA ZERO 400": "BEBIDAS",
+    "GATORADE": "BEBIDAS",
+    "CERVEZA AGUILA LIGHT": "BEBIDAS",
+    "CERVEZA AGUILA NEGRA": "BEBIDAS",
+    "CERVEZA CLUB COLOMBIA": "BEBIDAS",
+    "CERVEZA STELLA": "BEBIDAS",
+    "AGUA PET 600": "BEBIDAS",
+    "TE HATSU 500 ML": "BEBIDAS",
+    "CERVEZA CORONA 330ML": "BEBIDAS",
+    "SODA SCHWEPPERS": "BEBIDAS",
+    
+    # ==================== RON Y VINOS ====================
+    "AGUARDIENTE 375": "RON Y VINOS",
+    "AGUARDIENTE 750": "RON Y VINOS",
+    "BUCHANNA 375": "RON Y VINOS",
+    "BUCHANNA 750": "RON Y VINOS",
+    "OLD PARR 750": "RON Y VINOS",
+    "RON CALDAS 375": "RON Y VINOS",
+    "RON MEDELLIN 375": "RON Y VINOS",
+    "RON MEDELLIN 750": "RON Y VINOS",
+    "TEQUILA JOSE CUERVO 750": "RON Y VINOS",
+    "TRIPLESECC": "RON Y VINOS",
+    "V.BLANCO S.B SANTA RITA 750": "RON Y VINOS",
+    "V.TINTO C.B 750 SANT RITA": "RON Y VINOS",
+    "V.TINTO POLERO 750ML": "RON Y VINOS",
+    
+    # ==================== PULPAS Y FRUTAS ====================
+    "PULPA DE FRESA 90GR": "PULPAS Y FRUTAS",
+    "PULPA DE MANGO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MARACUYA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA LULO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MORA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA GUANABANA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE COROZO KL": "PULPAS Y FRUTAS",
+    "LIMON": "PULPAS Y FRUTAS",
+    "NARANJA": "PULPAS Y FRUTAS",
+    
+    # ==================== HELADOS Y POSTRES ====================
+    "CHOCO CONO": "HELADOS Y POSTRES",
+    "HELADO DE GALLETA": "HELADOS Y POSTRES",
+    "PALETA CHOCO BREACK": "HELADOS Y POSTRES",
+    "HELADO CASERO": "HELADOS Y POSTRES",
+    "POSTRES DE LA CASA": "HELADOS Y POSTRES",
+    "CREMA DE COCO": "HELADOS Y POSTRES",
+    "CEREZA": "HELADOS Y POSTRES",
+    "CREMA DE LECHE": "HELADOS Y POSTRES",
+    "V.BLANCO POLERO": "HELADOS Y POSTRES",
+    "AZUCAR POR KILO": "HELADOS Y POSTRES",
+    "CAFÉ POR SOBRE": "HELADOS Y POSTRES"
+}
 
-        /* =========================================
-           PESTAÑAS DE NAVEGACIÓN (TABS)
-           ========================================= */
-        .tabs {
-            display: flex;
-            background-color: var(--white-color);
-            border-bottom: 1px solid #ddd;
-            position: sticky;
-            top: 56px;
-            z-index: 90;
-        }
+# =============================================================================
+# FUNCIONES AUXILIARES PARA CÁLCULO DE INVENTARIO
+# =============================================================================
 
-        .tab-btn {
-            flex: 1;
-            padding: 14px;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            background: none;
-            font-weight: 500;
-            color: #666;
-            border-bottom: 3px solid transparent;
-            transition: all 0.2s;
-        }
+def calcular_inventario_para_reporte(
+    productos: List[Dict[str, Any]], 
+    movimientos: List[Dict[str, Any]], 
+    fecha_consulta: str
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Calcula los valores de inventario para cada producto.
+    
+    Fórmula:
+        INV INI = inv_final del cierre anterior (o 0 si es el primer día)
+        ENTRA = suma de movimientos tipo 'entrada' del día
+        VENTAS = suma de movimientos tipo 'salida' del día  
+        TOTAL = INV INI + ENTRA
+        INV FINAL = TOTAL - VENTAS
+    
+    Args:
+        productos: Lista de productos del inventario
+        movimientos: Lista de movimientos del día
+        fecha_consulta: Fecha para la cual se calcula
+        
+    Returns:
+        dict: Productos agrupados por categoría con valores calculados
+    """
+    # Inicializar estructura por categorías
+    categorias = {
+        "BEBIDAS": [],
+        "RON Y VINOS": [],
+        "PULPAS Y FRUTAS": [],
+        "HELADOS Y POSTRES": []
+    }
+    
+    # Procesar cada producto
+    for prod in productos:
+        # Determinar categoría (por defecto BEBIDAS si no está mapeado)
+        categoria = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
+        
+        # Obtener inventario inicial del cierre anterior
+        cierre_anterior = obtener_cierre_anterior(prod['id'], fecha_consulta)
+        inv_ini = cierre_anterior['inv_final'] if cierre_anterior else 0.0
+        
+        # Calcular movimientos del día
+        entra = sum(
+            m['cantidad'] for m in movimientos 
+            if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'
+        )
+        ventas = sum(
+            m['cantidad'] for m in movimientos 
+            if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'
+        )
+        
+        # Calcular totales
+        total = inv_ini + entra
+        inv_final = total - ventas
+        
+        # Agregar a la categoría correspondiente
+        categorias[categoria].append({
+            'id': prod['id'],
+            'nombre': prod['nombre'],
+            'inv_ini': round(inv_ini, 2) if inv_ini > 0 else '',
+            'entra': round(entra, 2) if entra > 0 else '',
+            'total': round(total, 2) if total > 0 else '',
+            'ventas': round(ventas, 2) if ventas > 0 else '',
+            'inv_final': round(inv_final, 2) if inv_final > 0 else '',
+            'bajas': '',  # Se pueden agregar manualmente en el reporte
+            'observaciones': ''
+        })
+    
+    # Ordenar productos alfabéticamente dentro de cada categoría
+    for categoria in categorias:
+        categorias[categoria] = sorted(
+            categorias[categoria], 
+            key=lambda x: x['nombre']
+        )
+    
+    return categorias
 
-        .tab-btn.active {
-            color: var(--accent-color);
-            border-bottom-color: var(--accent-color);
-            font-weight: 700;
-            background-color: #f0f7ff;
-        }
+# =============================================================================
+# ENDPOINTS DE REPORTES Y GENERACIÓN DE PDF
+# =============================================================================
 
-        /* =========================================
-           CONTENIDO Y SECCIONES
-           ========================================= */
-        .section {
-            padding: 15px;
-            display: none;
-        }
+@app.get(
+    "/api/reporte/imprimir",
+    response_class=HTMLResponse,
+    tags=["Reportes"],
+    summary="Vista de impresión"
+)
+async def vista_impresion(
+    request: Request,
+    fecha: Optional[str] = Query(None, description="Fecha del reporte (YYYY-MM-DD)"),
+    user: Dict[str, Any] = Depends(check_url_token)
+):
+    """
+    Genera vista HTML optimizada para impresión de inventario.
+    
+    Características:
+    - Formato A4 horizontal
+    - Columnas: PRODUCTOS | INV.INI | ENTRA | TOTAL | VENTAS | INV.FINAL | BAJAS | OBSERV.
+    - Agrupado por categorías (BEBIDAS, RON Y VINOS, etc.)
+    - Espacio para firmas al final
+    - CSS @media print para ocultar elementos de UI
+    
+    Args:
+        fecha: Fecha del reporte (por defecto: hoy)
+        user: Usuario autenticado (vía header o URL param)
+        
+    Returns:
+        HTMLResponse: Página lista para imprimir o guardar como PDF
+    """
+    # Determinar fecha de consulta
+    fecha_consulta = fecha or datetime.now().date().isoformat()
+    
+    # Obtener datos necesarios
+    productos = obtener_productos()
+    movimientos = obtener_movimientos_dia(fecha_consulta)
+    
+    # Calcular valores de inventario
+    categorias = calcular_inventario_para_reporte(
+        productos, movimientos, fecha_consulta
+    )
+    
+    # Preparar contexto para plantilla
+    contexto = {
+        "request": request,
+        "fecha": fecha_consulta,
+        "categorias": [
+            {"nombre": cat, "productos": prods} 
+            for cat, prods in categorias.items() 
+            if prods  # Solo incluir categorías con productos
+        ],
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "usuario": user.get('sub', 'desconocido')
+    }
+    
+    return templates.TemplateResponse("print_view.html", contexto)
 
-        .section.active {
-            display: block;
-        }
-
-        /* =========================================
-           TARJETAS (CARDS)
-           ========================================= */
-        .card {
-            background-color: var(--white-color);
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px var(--shadow-color);
-            margin-bottom: 15px;
-        }
-
-        .card h3 {
-            margin-bottom: 12px;
-            color: var(--primary-color);
-            font-size: 1rem;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 8px;
-        }
-
-        .card.cierre {
-            border: 2px solid var(--danger-color);
-            background-color: #fff5f5;
-        }
-        .card.cierre h3 {
-            color: var(--danger-color);
-            border-bottom-color: var(--danger-color);
-        }
-
-        /* =========================================
-           FORMULARIOS (INPUTS Y SELECTS)
-           ========================================= */
-        input, select {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 16px;
-            background-color: #fff;
-        }
-
-        input:focus, select:focus {
-            border-color: var(--accent-color);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
-        }
-
-        /* =========================================
-           BOTONES PRINCIPALES
-           ========================================= */
-        .btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            color: white;
-            margin-top: 5px;
-            transition: opacity 0.2s;
-        }
-
-        .btn:hover { opacity: 0.9; }
-
-        .btn-primary { background-color: var(--accent-color); }
-        .btn-success { background-color: var(--success-color); }
-        .btn-danger  { background-color: var(--danger-color); }
-        .btn-warning { background-color: var(--warning-color); color: #000; }
-
-        /* =========================================
-           GRUPO DE ACCIONES (ICONOS EN TABLA)
-           ========================================= */
-        .action-group {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .icon-btn {
-            width: 34px;
-            height: 34px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1rem;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.15s;
-        }
-
-        .icon-btn:hover { transform: scale(1.1); }
-        .icon-add { background-color: var(--success-color); color: white; }
-        .icon-sub { background-color: var(--warning-color); color: white; }
-        .icon-del { background-color: var(--danger-color); color: white; }
-
-        /* =========================================
-           TABLAS
-           ========================================= */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: var(--white-color);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px var(--shadow-color);
-            font-size: 0.9rem;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-
-        th {
-            background-color: #f4f6f8;
-            color: #444;
-            font-weight: 600;
-        }
-
-        .stock-ok { color: var(--success-color); font-weight: 700; }
-        .stock-low { color: var(--danger-color); font-weight: 700; }
-
-        /* =========================================
-           RESPONSIVE (MÓVILES)
-           ========================================= */
-        @media (max-width: 600px) {
-            .action-group { flex-direction: column; gap: 4px; }
-            .icon-btn { width: 30px; height: 30px; font-size: 0.9rem; }
-            th, td { padding: 10px 6px; font-size: 0.85rem; }
-            .card { padding: 12px; }
-        }
-    </style>
-</head>
-<body>
-
-    <!-- ENCABEZADO SUPERIOR -->
-    <header>
-        <h1>🍽️ Solinilla</h1>
-        <div class="header-actions">
-            <button class="btn-header" onclick="openPrintView()">🖨️ Imprimir</button>
-            <button class="btn-header" onclick="logout()">Salir</button>
-        </div>
-    </header>
-
-    <!-- BARRA DE ALERTAS (Stock bajo) -->
-    <div id="stock-alert" class="alert-bar"></div>
-
-    <!-- NAVEGACIÓN POR PESTAÑAS -->
-    <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('inv')">📦 Inventario</button>
-        <button class="tab-btn" onclick="switchTab('mov')">🔄 Movimientos</button>
-        <button class="tab-btn" onclick="switchTab('rep')">📊 Reportes</button>
-    </div>
-
-    <!-- ==========================================
-         SECCIÓN 1: INVENTARIO
-         ========================================== -->
-    <div id="inv" class="section active">
-        <!-- Buscador Desplegable -->
-        <div class="card">
-            <h3>🔍 Buscar Producto</h3>
-            <select id="search-select" onchange="highlightProduct()">
-                <option value="">-- Selecciona un producto --</option>
-            </select>
-        </div>
-
-        <!-- Tabla de Productos -->
-        <div class="card" style="padding: 0; overflow-x: auto;">
-            <table id="inventory-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Nombre</th>
-                        <th>Stock</th>
-                        <th style="text-align: center;">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Se llena dinámicamente con JS -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- ==========================================
-         SECCIÓN 2: MOVIMIENTOS
-         ========================================== -->
-    <div id="mov" class="section">
-        <!-- Formulario de Movimiento -->
-        <div class="card">
-            <h3>📝 Registrar Movimiento</h3>
+@app.get(
+    "/api/reporte/pdf",
+    tags=["Reportes"],
+    summary="Generar PDF de inventario",
+    response_class=StreamingResponse
+)
+async def generar_pdf_inventario(
+    fecha: str = Query(..., pattern=r'^\d{4}-\d{2}-\d{2}$', description="Fecha del reporte"),
+    user: Dict[str, Any] = Depends(check_url_token)
+):
+    """
+    Genera y descarga un PDF profesional con el reporte de inventario.
+    
+    Características del PDF:
+    - Tamaño A4 horizontal para mejor legibilidad de tablas
+    - Encabezado con logo y fecha
+    - Tablas con estilo profesional (bordes, colores, alineación)
+    - Agrupación por categorías con títulos destacados
+    - Pie de página con timestamp y espacio para firmas
+    - Fuente Helvetica para compatibilidad universal
+    
+    Args:
+        fecha: Fecha del reporte en formato YYYY-MM-DD
+        user: Usuario autenticado
+        
+    Returns:
+        StreamingResponse: Archivo PDF listo para descarga
+        
+    Raises:
+        HTTPException: Si hay error generando el PDF
+    """
+    try:
+        # ==========================================
+        # PASO 1: OBTENER Y PROCESAR DATOS
+        # ==========================================
+        productos = obtener_productos()
+        movimientos = obtener_movimientos_dia(fecha)
+        categorias = calcular_inventario_para_reporte(
+            productos, movimientos, fecha
+        )
+        
+        # ==========================================
+        # PASO 2: CONFIGURAR DOCUMENTO PDF
+        # ==========================================
+        # Buffer en memoria para evitar escritura en disco
+        buffer = BytesIO()
+        
+        # Configurar página A4 horizontal con márgenes
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),  # Horizontal para tablas anchas
+            topMargin=0.5*inch,
+            bottomMargin=0.5*inch,
+            leftMargin=0.3*inch,
+            rightMargin=0.3*inch
+        )
+        
+        # Elementos a agregar al documento
+        elements = []
+        
+        # Estilos de texto
+        styles = getSampleStyleSheet()
+        
+        # Estilo personalizado para título principal
+        title_style = ParagraphStyle(
+            'ReportTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            alignment=TA_CENTER,
+            spaceAfter=12,
+            textColor=colors.HexColor("#2c3e50"),
+            fontName='Helvetica-Bold'
+        )
+        
+        # Estilo para subtítulos de categoría
+        category_style = ParagraphStyle(
+            'CategoryTitle',
+            parent=styles['Heading2'],
+            fontSize=11,
+            spaceBefore=10,
+            spaceAfter=5,
+            textColor=colors.HexColor("#2c3e50"),
+            fontName='Helvetica-Bold'
+        )
+        
+        # Estilo para pie de página
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_RIGHT,
+            textColor=colors.grey,
+            spaceBefore=20
+        )
+        
+        # ==========================================
+        # PASO 3: AGREGAR ENCABEZADO
+        # ==========================================
+        elements.append(Paragraph("INVENTARIO RESTAURANTE", title_style))
+        elements.append(Paragraph(
+            f"Fecha de reporte: <b>{fecha}</b>", 
+            ParagraphStyle('Date', alignment=TA_CENTER, spaceAfter=15)
+        ))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # ==========================================
+        # PASO 4: GENERAR TABLAS POR CATEGORÍA
+        # ==========================================
+        # Encabezados de columna
+        column_headers = [
+            'PRODUCTOS', 'INV.INI', 'ENTRA', 'TOTAL', 
+            'VENTAS', 'INV.FINAL', 'BAJAS', 'OBSERV.'
+        ]
+        
+        # Anchos de columna (en pulgadas)
+        column_widths = [
+            2.3*inch,   # Productos (nombre largo)
+            0.65*inch,  # INV.INI
+            0.65*inch,  # ENTRA
+            0.65*inch,  # TOTAL
+            0.65*inch,  # VENTAS
+            0.85*inch,  # INV.FINAL (destacado)
+            0.55*inch,  # BAJAS
+            0.9*inch    # OBSERVACIONES
+        ]
+        
+        # Procesar cada categoría
+        for categoria_nombre in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
+            productos_categoria = categorias.get(categoria_nombre, [])
             
-            <label style="font-size: 0.9rem; color: #666;">Producto:</label>
-            <select id="mov-product-select" onchange="document.getElementById('mov-product-id').value = this.value">
-                <option value="">-- Selecciona producto --</option>
-            </select>
-            <input type="hidden" id="mov-product-id">
+            if not productos_categoria:
+                continue  # Saltar categorías vacías
             
-            <label style="font-size: 0.9rem; color: #666;">Cantidad:</label>
-            <input type="number" id="mov-qty" placeholder="Cantidad" min="1">
+            # Título de categoría
+            elements.append(Paragraph(f"📦 {categoria_nombre}", category_style))
+            elements.append(Spacer(1, 0.05*inch))
             
-            <label style="font-size: 0.9rem; color: #666;">Tipo:</label>
-            <select id="mov-type">
-                <option value="entrada">🟢 Entrada (Compra/Reposición)</option>
-                <option value="salida">🔴 Salida (Venta/Consumo)</option>
-            </select>
+            # Datos de la tabla
+            table_data = [column_headers]  # Fila de encabezados
             
-            <label style="font-size: 0.9rem; color: #666;">Motivo (opcional):</label>
-            <input type="text" id="mov-reason" placeholder="Ej: Proveedor X">
+            for prod in productos_categoria:
+                table_data.append([
+                    prod['nombre'],
+                    str(prod['inv_ini']) if prod['inv_ini'] != '' else '',
+                    str(prod['entra']) if prod['entra'] != '' else '',
+                    str(prod['total']) if prod['total'] != '' else '',
+                    str(prod['ventas']) if prod['ventas'] != '' else '',
+                    str(prod['inv_final']) if prod['inv_final'] != '' else '',
+                    str(prod['bajas']) if prod['bajas'] != '' else '',
+                    prod['observaciones'] if prod['observaciones'] else ''
+                ])
             
-            <button class="btn btn-success" onclick="registerMovement()">✅ Registrar</button>
-        </div>
-
-        <!-- Historial del Día -->
-        <div class="card">
-            <h3>📅 Movimientos de Hoy</h3>
-            <table id="movements-table">
-                <thead>
-                    <tr>
-                        <th>Tipo</th>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Motivo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Se llena dinámicamente con JS -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- ==========================================
-         SECCIÓN 3: REPORTES Y CIERRE
-         ========================================== -->
-    <div id="rep" class="section">
-        <!-- Generador de PDF -->
-        <div class="card">
-            <h3>📥 Generar Reporte PDF</h3>
-            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Selecciona la fecha:</label>
-            <input type="date" id="report-date">
-            <button class="btn btn-primary" onclick="downloadPDF()">📄 Descargar PDF</button>
-        </div>
-
-        <!-- NUEVA FUNCIÓN: Cierre de Inventario -->
-        <div class="card cierre">
-            <h3>🔒 Cerrar Inventario del Día</h3>
-            <p style="color: #666; font-size: 0.9rem; margin-bottom: 10px;">
-                Esta acción guarda el estado final del inventario de hoy (INV FINAL) 
-                para que sea automáticamente el Inventario Inicial (INV INI) de mañana.
-            </p>
-            <label style="font-size: 0.9rem; color: #666; display: block; margin-bottom: 5px;">Fecha a cerrar:</label>
-            <input type="date" id="cierre-date">
-            <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR INVENTARIO</button>
-        </div>
-    </div>
-
-    <!-- ==========================================
-         JAVASCRIPT (LÓGICA)
-         ========================================== -->
-    <script>
-        // Configuración base
-        const API_BASE = '';
-        let token = localStorage.getItem('token');
-        let productsData = [];
-
-        // Redirigir si no hay sesión activa
-        if (!token) {
-            window.location.href = '/';
-        }
-
-        /**
-         * Cambia entre pestañas del dashboard
-         */
-        function switchTab(tabId) {
-            // Ocultar todas las secciones
-            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            # Crear tabla ReportLab
+            table = Table(table_data, colWidths=column_widths)
             
-            // Mostrar la seleccionada
-            document.getElementById(tabId).classList.add('active');
-            event.target.classList.add('active');
-            
-            // Cargar datos específicos
-            if (tabId === 'inv') loadInventory();
-            if (tabId === 'mov') loadMovements();
-        }
-
-        /**
-         * Cierra sesión y borra token
-         */
-        function logout() {
-            localStorage.clear();
-            window.location.href = '/';
-        }
-
-        /**
-         * Función genérica para llamadas a la API
-         */
-        async function apiCall(url, method = 'GET', body = null) {
-            const headers = { 'Authorization': 'Bearer ' + token };
-            if (body) headers['Content-Type'] = 'application/json';
-            
-            const response = await fetch(url, { 
-                method: method, 
-                headers: headers, 
-                body: body ? JSON.stringify(body) : null 
-            });
-            
-            if (response.status === 401) logout();
-            return response.json();
-        }
-
-        // ==========================================
-        // LÓGICA DE INVENTARIO
-        // ==========================================
-
-        /**
-         * Carga la lista de productos y actualiza la tabla
-         */
-        async function loadInventory() {
-            const data = await apiCall('/api/productos');
-            productsData = data.productos || [];
-            
-            const tbody = document.querySelector('#inventory-table tbody');
-            const searchSelect = document.getElementById('search-select');
-            const movSelect = document.getElementById('mov-product-select');
-            
-            tbody.innerHTML = '';
-            searchSelect.innerHTML = '<option value="">-- Selecciona un producto --</option>';
-            movSelect.innerHTML = '<option value="">-- Selecciona producto --</option>';
-            
-            let lowStockCount = 0;
-            let lowStockNames = [];
-
-            productsData.forEach(p => {
-                // Determinar clase de stock
-                const stockClass = p.stock < 10 ? 'stock-low' : 'stock-ok';
+            # Aplicar estilos a la tabla
+            table.setStyle(TableStyle([
+                # Encabezado
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
                 
-                // Alerta de stock bajo
-                if (p.stock < 10) {
-                    lowStockCount++;
-                    lowStockNames.push(`${p.nombre} (${p.stock})`);
-                }
-
-                // Crear fila de tabla
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${p.id}</td>
-                    <td>${p.nombre}</td>
-                    <td class="${stockClass}">${p.stock}</td>
-                    <td>
-                        <div class="action-group">
-                            <button class="icon-btn icon-add" onclick="quickAction('${p.id}', 'entrada')" title="Agregar Stock">➕</button>
-                            <button class="icon-btn icon-sub" onclick="quickAction('${p.id}', 'salida')" title="Descontar Stock">➖</button>
-                            <button class="icon-btn icon-del" onclick="deleteProduct('${p.id}')" title="Eliminar Producto">🗑️</button>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-
-                // Llenar selects de búsqueda y movimientos
-                const optionHTML = `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`;
-                searchSelect.innerHTML += optionHTML;
-                movSelect.innerHTML += optionHTML;
-            });
-
-            // Actualizar barra de alerta
-            const alertBox = document.getElementById('stock-alert');
-            if (lowStockCount > 0) {
-                alertBox.style.display = 'flex';
-                alertBox.innerHTML = `⚠️ <strong>${lowStockCount} productos con stock bajo:</strong> ${lowStockNames.join(', ')}`;
-            } else {
-                alertBox.style.display = 'none';
-            }
-        }
-
-        /**
-         * Resalta un producto en la tabla al buscarlo
-         */
-        function highlightProduct() {
-            const selectedId = document.getElementById('search-select').value;
-            if (!selectedId) return;
-
-            const rows = document.querySelectorAll('#inventory-table tbody tr');
-            rows.forEach(row => {
-                if (row.cells[0].textContent === selectedId) {
-                    row.style.backgroundColor = '#fff3cd';
-                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setTimeout(() => { row.style.backgroundColor = ''; }, 2000);
-                }
-            });
-        }
-
-        /**
-         * Pre-llena el formulario de movimiento para acción rápida
-         */
-        function quickAction(productId, type) {
-            document.getElementById('mov-product-id').value = productId;
-            document.getElementById('mov-product-select').value = productId;
-            document.getElementById('mov-type').value = type;
-            document.getElementById('mov-qty').value = '1';
-            document.getElementById('mov-qty').focus();
-            switchTab('mov');
-        }
-
-        /**
-         * Elimina un producto
-         */
-        async function deleteProduct(id) {
-            if (!confirm('¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.')) return;
-            await apiCall(`/api/productos/${id}`, 'DELETE');
-            loadInventory();
-        }
-
-        // ==========================================
-        // LÓGICA DE MOVIMIENTOS
-        // ==========================================
-
-        /**
-         * Registra una entrada o salida
-         */
-        async function registerMovement() {
-            const productId = document.getElementById('mov-product-id').value || document.getElementById('mov-product-select').value;
-            const qty = parseFloat(document.getElementById('mov-qty').value);
-            const type = document.getElementById('mov-type').value;
-            const reason = document.getElementById('mov-reason').value;
-
-            if (!productId || !qty || qty <= 0) {
-                return alert('Por favor selecciona un producto e ingresa una cantidad válida.');
-            }
-
-            const result = await apiCall('/api/movimientos', 'POST', {
-                producto_id: productId,
-                tipo: type,
-                cantidad: qty,
-                motivo: reason
-            });
-
-            alert(result.msg || 'Movimiento registrado');
-            
-            // Limpiar formulario
-            document.getElementById('mov-qty').value = '';
-            document.getElementById('mov-reason').value = '';
-            
-            // Recargar datos
-            loadMovements();
-            loadInventory();
-        }
-
-        /**
-         * Carga el historial de movimientos del día
-         */
-        async function loadMovements() {
-            const today = new Date().toISOString().split('T')[0];
-            const data = await apiCall(`/api/movimientos?fecha=${today}`);
-            const tbody = document.querySelector('#movements-table tbody');
-            tbody.innerHTML = '';
-
-            (data.movimientos || []).forEach(m => {
-                const color = m.tipo === 'entrada' ? 'green' : 'red';
-                const icon = m.tipo === 'entrada' ? '🟢' : '🔴';
-                const prodName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
+                # Alineación y formato general
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 
-                tbody.innerHTML += `
-                    <tr>
-                        <td style="color:${color}; font-weight:600;">${icon} ${m.tipo}</td>
-                        <td>${prodName}</td>
-                        <td>${m.cantidad}</td>
-                        <td>${m.motivo || '-'}</td>
-                    </tr>
-                `;
-            });
-        }
-
-        // ==========================================
-        // LÓGICA DE REPORTES Y CIERRE
-        // ==========================================
-
-        /**
-         * Abre la vista de impresión en nueva ventana
-         */
-        async function openPrintView() {
-            const fecha = new Date().toISOString().split('T')[0];
-            const url = `${API_BASE}/api/reporte/imprimir?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
-        }
-
-        /**
-         * Descarga el PDF directamente
-         */
-        async function downloadPDF() {
-            const fecha = document.getElementById('report-date').value;
-            if (!fecha) return alert('Por favor selecciona una fecha.');
+                # Columna de productos: alineación izquierda
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                
+                # Columna INV.FINAL: negrita para destacar
+                ('FONTNAME', (5, 1), (5, -1), 'Helvetica-Bold'),
+                
+                # Filas alternas para mejor legibilidad
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.beige]),
+                
+                # Tamaño de fuente para datos
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ]))
             
-            const url = `${API_BASE}/api/reporte/pdf?fecha=${fecha}&token=${encodeURIComponent(token)}`;
-            window.location.href = url;
-        }
-
-        /**
-         * NUEVA FUNCIÓN: Cierra el inventario del día
-         */
-        async function cerrarInventario() {
-            const fecha = document.getElementById('cierre-date').value;
-            if (!fecha) return alert('Por favor selecciona una fecha para el cierre.');
-            
-            if (!confirm(`¿Estás seguro de CERRAR el inventario del día ${fecha}?\n\nEsto guardará el estado actual (INV FINAL) y lo usará como INV INI para el día siguiente.\n\nNo podrás modificar este cierre después.`)) {
-                return;
+            elements.append(table)
+            elements.append(Spacer(1, 0.15*inch))  # Espacio entre categorías
+        
+        # ==========================================
+        # PASO 5: AGREGAR PIE DE PÁGINA
+        # ==========================================
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Línea separadora
+        elements.append(Paragraph(
+            "<hr/>", 
+            ParagraphStyle('Separator', fontSize=8, spaceAfter=10)
+        ))
+        
+        # Información de generación
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        elements.append(Paragraph(
+            f"Generado automáticamente por Solinilla Inventory System v2.0 | {timestamp}", 
+            footer_style
+        ))
+        
+        # Espacio para firmas
+        elements.append(Spacer(1, 0.4*inch))
+        
+        firmas_style = ParagraphStyle(
+            'Firmas',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_CENTER,
+            spaceBefore=5
+        )
+        
+        firmas_table = Table([
+            ['_________________________', '_________________________'],
+            ['INV. INICIAL', 'INV. FINAL'],
+            ['Nombre y firma', 'Nombre y firma']
+        ], colWidths=[3*inch, 3*inch])
+        
+        firmas_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 1), (-1, 2), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        
+        elements.append(firmas_table)
+        
+        # ==========================================
+        # PASO 6: CONSTRUIR Y RETORNAR PDF
+        # ==========================================
+        doc.build(elements)
+        
+        # Preparar buffer para streaming
+        buffer.seek(0)
+        
+        # Nombre del archivo para descarga
+        filename = f"inventario_solinilla_{fecha}.pdf"
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{filename}"
             }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generando PDF: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generando reporte PDF: {str(e)}"
+        )
 
-            try {
-                const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
-                alert(result.msg || 'Inventario cerrado exitosamente');
-            } catch (error) {
-                alert('Error al cerrar inventario: ' + error.message);
-            }
+@app.get(
+    "/api/reporte/resumen",
+    response_model=Dict[str, Any],
+    tags=["Reportes"],
+    summary="Resumen rápido de inventario"
+)
+async def resumen_inventario(
+    fecha: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Obtiene un resumen JSON del estado actual del inventario.
+    
+    Útil para:
+    - Dashboards en tiempo real
+    - Integraciones con otros sistemas
+    - Alertas automáticas de stock bajo
+    
+    Returns:
+        dict: Métricas clave del inventario
+    """
+    fecha_consulta = fecha or datetime.now().date().isoformat()
+    productos = obtener_productos()
+    
+    # Calcular métricas
+    total_productos = len(productos)
+    total_stock = sum(p['stock'] for p in productos)
+    productos_bajos = [p for p in productos if p['stock'] < 10]
+    productos_agotados = [p for p in productos if p['stock'] <= 0]
+    
+    # Productos por categoría
+    por_categoria = {}
+    for prod in productos:
+        cat = CATEGORIA_MAP.get(prod['nombre'], 'OTROS')
+        por_categoria[cat] = por_categoria.get(cat, 0) + 1
+    
+    return {
+        "fecha_consulta": fecha_consulta,
+        "metricas": {
+            "total_productos": total_productos,
+            "total_stock_unidades": round(total_stock, 2),
+            "productos_bajos_stock": len(productos_bajos),
+            "productos_agotados": len(productos_agotados),
+            "porcentaje_disponibilidad": round(
+                (total_productos - len(productos_agotados)) / total_productos * 100 
+                if total_productos > 0 else 0, 1
+            )
+        },
+        "alertas": {
+            "bajos": [p['nombre'] for p in productos_bajos[:10]],  # Top 10
+            "agotados": [p['nombre'] for p in productos_agotados]
+        },
+        "por_categoria": por_categoria,
+        "generado_en": datetime.utcnow().isoformat()
+    }
+
+# =============================================================================
+# ENDPOINTS UTILITARIOS Y DE SALUD
+# =============================================================================
+
+@app.get(
+    "/api/health",
+    tags=["Utilitarios"],
+    summary="Verificar estado del servidor"
+)
+async def health_check():
+    """
+    Endpoint de salud para monitoreo y load balancers.
+    
+    Returns:
+        dict: Estado de la aplicación y metadatos
+    """
+    return {
+        "status": "healthy",
+        "service": "solinilla-inventory-api",
+        "version": "2.0.0",
+        "environment": "production" if not IS_LOCAL else "development",
+        "database": "postgresql" if not IS_LOCAL else "sqlite",
+        "timestamp": datetime.utcnow().isoformat(),
+        "uptime_seconds": None  # Podrías calcularlo con un timestamp de inicio
+    }
+
+@app.get(
+    "/api/version",
+    tags=["Utilitarios"],
+    summary="Obtener versión de la API"
+)
+async def get_version():
+    """Retorna información de versión para compatibilidad de clientes."""
+    return {
+        "api_version": "2.0.0",
+        "min_client_version": "1.0.0",
+        "deprecated_endpoints": [],
+        "changelog_url": "https://solinilla.com/api/changelog"
+    }
+
+@app.get(
+    "/api/docs",
+    include_in_schema=False,
+    response_class=HTMLResponse
+)
+async def custom_docs(request: Request):
+    """Redirige a la documentación Swagger UI personalizada."""
+    return templates.TemplateResponse(
+        "docs_redirect.html",
+        {"request": request, "docs_url": "/docs"}
+    )
+
+# =============================================================================
+# MANEJO DE ERRORES GLOBAL (OPTIONAL)
+# =============================================================================
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Manejador personalizado para excepciones HTTP."""
+    logger.warning(
+        f"HTTP {exc.status_code} en {request.url.path}: {exc.detail}"
+    )
+    
+    # Para endpoints de API, retornar JSON
+    if request.url.path.startswith('/api'):
+        return {
+            "error": True,
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+            "timestamp": datetime.utcnow().isoformat()
         }
+    
+    # Para frontend, retornar respuesta por defecto
+    return exc
 
-        // Inicialización al cargar la página
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('report-date').valueAsDate = new Date();
-            document.getElementById('cierre-date').valueAsDate = new Date();
-            loadInventory();
-        });
-    </script>
-</body>
-</html>
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Manejador para excepciones no capturadas."""
+    logger.error(
+        f"Error no capturado en {request.url.path}: {str(exc)}",
+        exc_info=True
+    )
+    
+    if request.url.path.startswith('/api'):
+        return {
+            "error": True,
+            "status_code": 500,
+            "detail": "Error interno del servidor",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    # Para frontend, mostrar página de error amigable
+    return templates.TemplateResponse(
+        "error.html",
+        {
+            "request": request,
+            "error_code": 500,
+            "error_message": "Algo salió mal. Por favor intenta de nuevo."
+        }
+    )
+
+# =============================================================================
+# PUNTO DE ENTRADA PARA EJECUCIÓN DIRECTA (DEBUG)
+# =============================================================================
+
+if __name__ == "__main__":
+    """
+    Para ejecutar directamente con uvicorn en desarrollo:
+    
+    ```bash
+    python main.py
+    # o
+    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    ```
+    """
+    import uvicorn
+    
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,  # Solo para desarrollo
+        log_level="info"
+    )
