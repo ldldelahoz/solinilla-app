@@ -12,7 +12,7 @@ from datetime import datetime
 from io import BytesIO
 import traceback
 
-from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.pagesizes import letter, landscape, A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -256,50 +256,109 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
         cats = calcular_inventario(productos, movimientos, fecha)
         
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), 
-                                rightMargin=0.5*inch, leftMargin=0.5*inch)
+        # Formato horizontal A4 para que quepa la tabla ancha
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
+                                rightMargin=0.4*inch, leftMargin=0.4*inch, 
+                                topMargin=0.5*inch, bottomMargin=0.5*inch)
         elements = []
         
-        elements.append(Paragraph("INVENTARIO RESTAURANTE SOLINILLA", 
-                                 ParagraphStyle('Title', fontSize=12, alignment=1)))
+        # Título principal
+        elements.append(Paragraph("INVENTARIO RESTAURANTE", 
+                                 ParagraphStyle('Title', fontSize=14, alignment=1, fontName='Helvetica-Bold', spaceAfter=4)))
         elements.append(Paragraph(f"FECHA: {fecha}", 
-                                 ParagraphStyle('Sub', fontSize=9, alignment=1, spaceAfter=10)))
+                                 ParagraphStyle('Date', fontSize=10, alignment=1, spaceAfter=8)))
         
-        data = [['PRODUCTO', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL']]
+        # Datos de la tabla con columnas EXACTAS como la foto
+        data = [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV. FINAL', 'BAJAS', 'OBSERVACIONES']]
+        col_widths = [2.6*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.6*inch, 1.5*inch]
         
-        for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
-            if cat_name in cats:
+        # Orden de categorías
+        orden_categorias = ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]
+        
+        for cat_name in orden_categorias:
+            if cat_name in cats and cats[cat_name]:
+                # Fila de categoría (fondo gris claro, negrita)
+                data.append([cat_name, '', '', '', '', '', '', ''])
+                
                 for prod in cats[cat_name]:
                     data.append([
-                        prod['nombre'][:30],
-                        str(prod['inv_ini']) if prod['inv_ini'] else '0',
-                        str(prod['entra']) if prod['entra'] else '0',
-                        str(prod['total']) if prod['total'] else '0',
-                        str(prod['ventas']) if prod['ventas'] else '0',
-                        str(prod['inv_final']) if prod['inv_final'] else '0'
+                        prod['nombre'],
+                        str(prod['inv_ini']) if prod['inv_ini'] != '' else '',
+                        str(prod['entra']) if prod['entra'] != '' else '',
+                        str(prod['total']) if prod['total'] != '' else '',
+                        str(prod['ventas']) if prod['ventas'] != '' else '',
+                        str(prod['inv_final']) if prod['inv_final'] != '' else '',
+                        prod['bajas'],
+                        prod['observaciones']
                     ])
         
-        table = Table(data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        # Crear tabla
+        table = Table(data, colWidths=col_widths)
+        table_style = TableStyle([
+            # Encabezado principal
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e0e0e0')),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            
+            # Grid completo (bordes negros finos como la hoja)
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ]))
+            
+            # Alineación general
+            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            
+            # Primera columna (Productos) alineada a la izquierda
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ])
         
+        # Colorear filas de categorías
+        current_row = 1
+        for cat_name in orden_categorias:
+            if cat_name in cats and cats[cat_name]:
+                len_cat = len(cats[cat_name])
+                # Fila de título de categoría
+                table_style.add('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#d0d0d0'))
+                table_style.add('FONTNAME', (0, current_row), (0, current_row), 'Helvetica-Bold')
+                table_style.add('SPAN', (0, current_row), (-1, current_row))
+                table_style.add('ALIGN', (0, current_row), (-1, current_row), 'CENTER')
+                table_style.add('FONTSIZE', (0, current_row), (-1, current_row), 9)
+                current_row += 1
+                current_row += len_cat
+        
+        table.setStyle(table_style)
         elements.append(table)
+        
+        # Espacio para firmas al final (como en la foto)
+        elements.append(Spacer(1, 0.4*inch))
+        firma_style = ParagraphStyle('Firma', fontSize=9, alignment=0, spaceBefore=5)
+        
+        # Tabla de firmas
+        firmas_data = [
+            ['NOMBRE INV INICIAL:', '', 'NOMBRE INV FINAL:', ''],
+            ['_________________________', '', '_________________________', '']
+        ]
+        firmas_table = Table(firmas_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+        firmas_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ]))
+        elements.append(firmas_table)
+        
         doc.build(elements)
         buffer.seek(0)
         
+        # inline permite que el navegador muestre el PDF con opciones de imprimir/guardar
         return StreamingResponse(buffer, media_type="application/pdf", 
-                                headers={"Content-Disposition": f"attachment; filename=inventario_{fecha}.pdf"})
+                                headers={"Content-Disposition": f"inline; filename=inventario_{fecha}.pdf"})
     except Exception as e:
-        print(f"ERROR PDF: {e}")
+        print(f"❌ ERROR PDF: {e}")
+        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error PDF: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
 @app.get("/api/health")
 def health():
     return {"status": "alive", "timestamp": datetime.utcnow().isoformat()}
