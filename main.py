@@ -1,15 +1,16 @@
 ﻿#!/usr/bin/env python3
-"""Solinilla Inventory API - PDF con formato de hoja física"""
+"""Solinilla Inventory API - Versión Ultra-Robusta"""
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from io import BytesIO
+import traceback
 
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import colors
@@ -25,7 +26,7 @@ from src.inventory import (
     cerrar_inventario_dia, obtener_cierre_por_fecha
 )
 
-app = FastAPI(title="Solinilla Inventory API", version="3.0")
+app = FastAPI(title="Solinilla Inventory API", version="4.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 templates = Jinja2Templates(directory="templates")
 security = HTTPBearer()
@@ -47,22 +48,34 @@ class MovimientoCreate(BaseModel):
     motivo: Optional[str] = None
 
 def require_auth(auth: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    payload = decode_token(auth.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="No autorizado", headers={"WWW-Authenticate": "Bearer"})
-    return payload
+    try:
+        payload = decode_token(auth.credentials)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        return payload
+    except Exception as e:
+        print(f"Error auth: {e}")
+        raise HTTPException(status_code=401, detail="No autorizado")
 
 def check_url_token(token: Optional[str] = Query(None), authorization: Optional[str] = None) -> dict:
-    auth_token = authorization.replace("Bearer ", "").strip() if authorization else (token.strip() if token else None)
-    user = decode_token(auth_token) if auth_token else None
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado")
-    return user
+    try:
+        auth_token = authorization.replace("Bearer ", "").strip() if authorization else (token.strip() if token else None)
+        user = decode_token(auth_token) if auth_token else None
+        if not user:
+            raise HTTPException(status_code=401, detail="No autenticado")
+        return user
+    except Exception as e:
+        print(f"Error token URL: {e}")
+        raise HTTPException(status_code=401, detail="Token inválido")
 
 @app.on_event("startup")
 async def startup_event():
-    init_db()
-    print("✅ Solinilla API iniciada")
+    try:
+        init_db()
+        print("✅ Solinilla API iniciada correctamente")
+    except Exception as e:
+        print(f"❌ Error en startup: {e}")
+        traceback.print_exc()
 
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request):
@@ -74,64 +87,113 @@ def dashboard(request: Request):
 
 @app.post("/api/login")
 def login(data: LoginRequest):
-    user = obtener_usuario_por_username(data.username)
-    if not user or not verify_password(data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas", headers={"WWW-Authenticate": "Bearer"})
-    token = create_access_token({"sub": user["username"], "rol": user["rol"]})
-    return {"access_token": token, "token_type": "bearer", "user": {"username": user["username"], "rol": user["rol"]}}
+    try:
+        user = obtener_usuario_por_username(data.username)
+        if not user or not verify_password(data.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+        token = create_access_token({"sub": user["username"], "rol": user["rol"]})
+        return {"access_token": token, "token_type": "bearer", "user": {"username": user["username"], "rol": user["rol"]}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error login: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @app.get("/api/productos")
 def get_prods(user: dict = Depends(require_auth)):
-    return {"productos": obtener_productos()}
+    try:
+        productos = obtener_productos()
+        return {"productos": productos}
+    except Exception as e:
+        print(f"Error productos: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/productos")
 def add_prod(p: ProductoCreate, user: dict = Depends(require_auth)):
-    ok, msg = crear_producto(p.id, p.nombre, p.stock, p.fecha_vencimiento)
-    return {"msg": msg} if ok else HTTPException(400, msg)
+    try:
+        ok, msg = crear_producto(p.id, p.nombre, p.stock, p.fecha_vencimiento)
+        if ok:
+            return {"msg": msg, "success": True}
+        raise HTTPException(status_code=400, detail=msg)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error crear producto: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/productos/{pid}")
 def del_prod(pid: str, user: dict = Depends(require_auth)):
-    ok, msg = eliminar_producto(pid)
-    return {"msg": msg} if ok else HTTPException(400, msg)
+    try:
+        ok, msg = eliminar_producto(pid)
+        if ok:
+            return {"msg": msg, "success": True}
+        raise HTTPException(status_code=400, detail=msg)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error eliminar: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/movimientos")
 def get_movs(fecha: Optional[str] = None, user: dict = Depends(require_auth)):
-    fecha = fecha or datetime.now().date().isoformat()
-    return {"movimientos": obtener_movimientos_dia(fecha)}
+    try:
+        fecha = fecha or datetime.now().date().isoformat()
+        movimientos = obtener_movimientos_dia(fecha)
+        return {"movimientos": movimientos}
+    except Exception as e:
+        print(f"Error movimientos: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/movimientos")
 def add_mov(m: MovimientoCreate, user: dict = Depends(require_auth)):
     try:
+        print(f"📝 Registrando movimiento: {m.producto_id}, {m.tipo}, {m.cantidad}")
         ok, msg = registrar_movimiento(m.producto_id, m.tipo, m.cantidad, m.motivo)
         if ok:
+            print(f"✅ Movimiento registrado: {msg}")
             return {"msg": msg, "success": True}
         else:
-            raise HTTPException(status_code=400, detail={"msg": msg})
+            print(f"❌ Error registrando: {msg}")
+            raise HTTPException(status_code=400, detail=msg)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"msg": f"Error: {str(e)}"})
+        print(f"❌ Error EXCEPTION en movimiento: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
 @app.get("/api/cierre/{fecha}")
 def obtener_cierre_api(fecha: str, user: dict = Depends(require_auth)):
-    return {"fecha": fecha, "productos": obtener_cierre_por_fecha(fecha)}
+    try:
+        return {"fecha": fecha, "productos": obtener_cierre_por_fecha(fecha)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/cierre")
 def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict = Depends(require_auth)):
-    productos = obtener_productos()
-    movimientos = obtener_movimientos_dia(fecha)
-    productos_con_cierre = []
-    for prod in productos:
-        cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
-        inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
-        entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
-        ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
-        inv_final = inv_ini + entra - ventas
-        productos_con_cierre.append({
-            'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra,
-            'ventas': ventas, 'bajas': 0, 'inv_final': inv_final, 'observaciones': ''
-        })
-    ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
-    return {"msg": msg} if ok else HTTPException(400, msg)
+    try:
+        productos = obtener_productos()
+        movimientos = obtener_movimientos_dia(fecha)
+        productos_con_cierre = []
+        for prod in productos:
+            cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
+            inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
+            entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
+            ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
+            inv_final = inv_ini + entra - ventas
+            productos_con_cierre.append({
+                'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra,
+                'ventas': ventas, 'bajas': 0, 'inv_final': inv_final, 'observaciones': ''
+            })
+        ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
+        if ok:
+            return {"msg": msg, "success": True}
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Mapeo de productos a categorías (EXACTO como tu hoja)
 CATEGORIA_MAP = {
     "SODA HADSU": "BEBIDAS", "COCACOLAPET 250ML": "BEBIDAS", "GINGER DRY 300ML": "BEBIDAS",
     "COCA COLA PET 400": "BEBIDAS", "POSTOBON PET 400": "BEBIDAS", "COCA COLA ZERO 400": "BEBIDAS",
@@ -185,6 +247,7 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
     for cat in cats:
         cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
+
 @app.get("/api/reporte/pdf")
 def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
     try:
@@ -194,23 +257,21 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
         
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), 
-                                rightMargin=0.3*inch, leftMargin=0.3*inch)
+                                rightMargin=0.5*inch, leftMargin=0.5*inch)
         elements = []
         
-        # Título
         elements.append(Paragraph("INVENTARIO RESTAURANTE SOLINILLA", 
                                  ParagraphStyle('Title', fontSize=12, alignment=1)))
         elements.append(Paragraph(f"FECHA: {fecha}", 
                                  ParagraphStyle('Sub', fontSize=9, alignment=1, spaceAfter=10)))
         
-        # Tabla simple
         data = [['PRODUCTO', 'INV.INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV.FINAL']]
         
         for cat_name in ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]:
             if cat_name in cats:
                 for prod in cats[cat_name]:
                     data.append([
-                        prod['nombre'],
+                        prod['nombre'][:30],
                         str(prod['inv_ini']) if prod['inv_ini'] else '0',
                         str(prod['entra']) if prod['entra'] else '0',
                         str(prod['total']) if prod['total'] else '0',
@@ -235,11 +296,20 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
         return StreamingResponse(buffer, media_type="application/pdf", 
                                 headers={"Content-Disposition": f"attachment; filename=inventario_{fecha}.pdf"})
     except Exception as e:
-        print(f"ERROR PDF: {str(e)}")
-        import traceback
+        print(f"ERROR PDF: {e}")
         traceback.print_exc()
-        raise HTTPException(500, f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error PDF: {str(e)}")
 
 @app.get("/api/health")
 def health():
-    return {"status": "alive"}
+    return {"status": "alive", "timestamp": datetime.utcnow().isoformat()}
+
+# Manejador global de errores
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"❌ ERROR GLOBAL: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Error interno: {str(exc)}"}
+    )
