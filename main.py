@@ -101,9 +101,14 @@ def get_movs(fecha: Optional[str] = None, user: dict = Depends(require_auth)):
 
 @app.post("/api/movimientos")
 def add_mov(m: MovimientoCreate, user: dict = Depends(require_auth)):
-    ok, msg = registrar_movimiento(m.producto_id, m.tipo, m.cantidad, m.motivo)
-    return {"msg": msg} if ok else HTTPException(400, msg)
-
+    try:
+        ok, msg = registrar_movimiento(m.producto_id, m.tipo, m.cantidad, m.motivo)
+        if ok:
+            return {"msg": msg, "success": True}
+        else:
+            raise HTTPException(status_code=400, detail={"msg": msg})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"msg": f"Error: {str(e)}"})
 @app.get("/api/cierre/{fecha}")
 def obtener_cierre_api(fecha: str, user: dict = Depends(require_auth)):
     return {"fecha": fecha, "productos": obtener_cierre_por_fecha(fecha)}

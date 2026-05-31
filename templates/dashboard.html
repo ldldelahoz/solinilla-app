@@ -162,11 +162,34 @@
         async function apiCall(url, method = 'GET', body = null) {
             const headers = { 'Authorization': 'Bearer ' + token };
             if (body) headers['Content-Type'] = 'application/json';
-            const response = await fetch(url, { method: method, headers: headers, body: body ? JSON.stringify(body) : null });
-            if (response.status === 401) logout();
-            return response.json();
-        }
-
+            
+            const response = await fetch(url, { 
+                method: method, 
+                headers: headers, 
+                body: body ? JSON.stringify(body) : null 
+            });
+            
+            // Si hay error 401, cerrar sesión
+            if (response.status === 401) {
+                logout();
+                return;
+            }
+            
+            // Intentar parsear JSON
+            try {
+                const data = await response.json();
+                
+                // Si la respuesta no es exitosa, lanzar error
+                if (!response.ok) {
+                    throw new Error(data.detail?.msg || data.detail || data.msg || 'Error en la petición');
+                }
+                
+                return data;
+            } catch (e) {
+                console.error('Error parsing response:', e);
+                throw new Error('Error de conexión con el servidor');
+            }
+}
         async function loadInventory() {
             const data = await apiCall('/api/productos');
             // Eliminar duplicados usando un Set de IDs
@@ -247,13 +270,40 @@
             const type = document.getElementById('mov-type').value;
             const reason = document.getElementById('mov-reason').value;
 
-            if (!prodId || !qty || qty <= 0) return alert('Completa los datos');
+            if (!prodId || !qty || qty <= 0) {
+                alert('❌ Por favor selecciona un producto e ingresa una cantidad válida');
+                return;
+            }
 
-            const res = await apiCall('/api/movimientos', 'POST', { producto_id: prodId, tipo: type, cantidad: qty, motivo: reason });
-            alert(res.msg);
-            document.getElementById('mov-qty').value = '';
-            loadMovements();
-            loadInventory();
+            try {
+                const response = await apiCall('/api/movimientos', 'POST', { 
+                    producto_id: prodId, 
+                    tipo: type, 
+                    cantidad: qty, 
+                    motivo: reason 
+                });
+                
+                // Manejar respuesta
+                if (response.msg) {
+                    alert('✅ ' + response.msg);
+                } else if (response.success) {
+                    alert('✅ Movimiento registrado correctamente');
+                } else {
+                    alert('⚠️ Movimiento registrado');
+                }
+                
+                // Limpiar formulario
+                document.getElementById('mov-qty').value = '';
+                document.getElementById('mov-reason').value = '';
+                
+                // Recargar datos
+                await loadMovements();
+                await loadInventory();
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('❌ Error al registrar: ' + (error.message || 'Verifica la consola'));
+            }
         }
 
         async function loadMovements() {
