@@ -25,7 +25,8 @@ def obtener_usuario_por_username(username: str) -> Optional[Dict[str, Any]]:
         
         user = cur.fetchone()
         if user:
-            return dict(user) if not IS_LOCAL else dict(zip(['username', 'password_hash', 'rol'], user))
+            # ✅ CORRECCIÓN: Usar zip() funciona tanto en SQLite como en PostgreSQL
+            return dict(zip(['username', 'password_hash', 'rol'], user))
         return None
     except Exception as e:
         print(f"❌ Error obteniendo usuario: {e}")
@@ -46,15 +47,16 @@ def obtener_productos() -> List[Dict[str, Any]]:
     try:
         cur.execute("SELECT id, nombre, stock, fecha_vencimiento FROM productos ORDER BY nombre")
         rows = cur.fetchall()
-        return [dict(row) for row in rows] if not IS_LOCAL else [dict(zip(['id', 'nombre', 'stock', 'fecha_vencimiento'], r)) for r in rows]
+        cols = ['id', 'nombre', 'stock', 'fecha_vencimiento']
+        return [dict(zip(cols, r)) for r in rows]
     except Exception as e:
-        print(f" Error obteniendo productos: {e}")
+        print(f"❌ Error obteniendo productos: {e}")
         return []
     finally:
         cur.close()
         conn.close()
 
-def crear_producto(id_prod: str, nombre: str, stock: float = 0.0, fecha_vencimiento: Optional[str] = None) -> tuple[bool, str]:
+def crear_producto(id_prod: str, nombre: str, stock: float = 0.0, fecha_vencimiento: Optional[str] = None) -> tuple:
     """Crea un nuevo producto."""
     conn = get_conn()
     cur = conn.cursor()
@@ -74,7 +76,7 @@ def crear_producto(id_prod: str, nombre: str, stock: float = 0.0, fecha_vencimie
         cur.close()
         conn.close()
 
-def eliminar_producto(id_prod: str) -> tuple[bool, str]:
+def eliminar_producto(id_prod: str) -> tuple:
     """Elimina un producto por su ID."""
     conn = get_conn()
     cur = conn.cursor()
@@ -94,15 +96,14 @@ def eliminar_producto(id_prod: str) -> tuple[bool, str]:
 
 
 # ==========================================
-# 🔄 MOVIMIENTOS (Entradas/Salidas)
+# 🔄 MOVIMIENTOS
 # ==========================================
 
-def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: Optional[str] = None) -> tuple[bool, str]:
+def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: Optional[str] = None) -> tuple:
     """Registra entrada o salida y actualiza el stock automáticamente."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # 1. Obtener stock actual
         if IS_LOCAL:
             cur.execute("SELECT stock FROM productos WHERE id = ?", (producto_id,))
         else:
@@ -112,9 +113,8 @@ def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: O
         if not prod:
             return False, "❌ Producto no encontrado"
         
-        stock_actual = prod['stock'] if not IS_LOCAL else prod[0]
+        stock_actual = prod[0] if IS_LOCAL else prod['stock']
         
-        # 2. Calcular nuevo stock
         if tipo == "entrada":
             nuevo_stock = stock_actual + cantidad
         elif tipo == "salida":
@@ -124,7 +124,6 @@ def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: O
         else:
             return False, "❌ Tipo de movimiento inválido"
         
-        # 3. Actualizar stock y registrar movimiento
         if IS_LOCAL:
             cur.execute("UPDATE productos SET stock = ? WHERE id = ?", (nuevo_stock, producto_id))
             cur.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, motivo) VALUES (?, ?, ?, ?)",
@@ -151,17 +150,14 @@ def obtener_movimientos_dia(fecha: str) -> List[Dict[str, Any]]:
     try:
         if IS_LOCAL:
             cur.execute("""SELECT m.id, m.producto_id, m.tipo, m.cantidad, m.motivo, m.fecha 
-                          FROM movimientos m 
-                          WHERE DATE(m.fecha) = DATE(?) 
-                          ORDER BY m.fecha DESC""", (fecha,))
+                          FROM movimientos m WHERE DATE(m.fecha) = DATE(?) ORDER BY m.fecha DESC""", (fecha,))
         else:
             cur.execute("""SELECT m.id, m.producto_id, m.tipo, m.cantidad, m.motivo, m.fecha 
-                          FROM movimientos m 
-                          WHERE DATE(m.fecha) = DATE(%s) 
-                          ORDER BY m.fecha DESC""", (fecha,))
+                          FROM movimientos m WHERE DATE(m.fecha) = DATE(%s) ORDER BY m.fecha DESC""", (fecha,))
         
         rows = cur.fetchall()
-        return [dict(row) for row in rows] if not IS_LOCAL else [dict(zip(['id', 'producto_id', 'tipo', 'cantidad', 'motivo', 'fecha'], r)) for r in rows]
+        cols = ['id', 'producto_id', 'tipo', 'cantidad', 'motivo', 'fecha']
+        return [dict(zip(cols, r)) for r in rows]
     except Exception as e:
         print(f"❌ Error obteniendo movimientos: {e}")
         return []
@@ -171,27 +167,25 @@ def obtener_movimientos_dia(fecha: str) -> List[Dict[str, Any]]:
 
 
 # ==========================================
-# 🔒 CIERRES DE INVENTARIO DIARIO
+# 🔒 CIERRES DE INVENTARIO
 # ==========================================
 
 def obtener_cierre_anterior(producto_id: str, fecha_actual: str) -> Optional[Dict[str, Any]]:
-    """Obtiene el último cierre registrado para un producto antes o en la fecha dada."""
+    """Obtiene el último cierre registrado para un producto."""
     conn = get_conn()
     cur = conn.cursor()
     try:
         if IS_LOCAL:
             cur.execute("""SELECT * FROM cierres_inventario 
-                          WHERE producto_id = ? AND fecha <= ? 
-                          ORDER BY fecha DESC LIMIT 1""", (producto_id, fecha_actual))
+                          WHERE producto_id = ? AND fecha <= ? ORDER BY fecha DESC LIMIT 1""", (producto_id, fecha_actual))
         else:
             cur.execute("""SELECT * FROM cierres_inventario 
-                          WHERE producto_id = %s AND fecha <= %s 
-                          ORDER BY fecha DESC LIMIT 1""", (producto_id, fecha_actual))
+                          WHERE producto_id = %s AND fecha <= %s ORDER BY fecha DESC LIMIT 1""", (producto_id, fecha_actual))
         
         cierre = cur.fetchone()
         if cierre:
             cols = ['id','fecha','producto_id','inv_ini','entra','ventas','bajas','inv_final','observaciones','creado_por','fecha_cierre']
-            return dict(cierre) if not IS_LOCAL else dict(zip(cols, cierre))
+            return dict(zip(cols, cierre))
         return None
     except Exception as e:
         print(f"❌ Error obteniendo cierre anterior: {e}")
@@ -200,15 +194,11 @@ def obtener_cierre_anterior(producto_id: str, fecha_actual: str) -> Optional[Dic
         cur.close()
         conn.close()
 
-def cerrar_inventario_dia(fecha: str, productos_con_datos: List[Dict[str, Any]], creado_por: str = "admin") -> tuple[bool, str]:
-    """
-    Guarda un snapshot del inventario para una fecha específica.
-    productos_con_datos: lista de dicts con {producto_id, inv_ini, entra, ventas, bajas, inv_final, observaciones}
-    """
+def cerrar_inventario_dia(fecha: str, productos_con_datos: List[Dict[str, Any]], creado_por: str = "admin") -> tuple:
+    """Guarda un snapshot del inventario para una fecha específica."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # Verificar si ya existe cierre para esa fecha
         if IS_LOCAL:
             cur.execute("SELECT COUNT(*) FROM cierres_inventario WHERE fecha = ?", (fecha,))
         else:
@@ -217,7 +207,6 @@ def cerrar_inventario_dia(fecha: str, productos_con_datos: List[Dict[str, Any]],
         if cur.fetchone()[0] > 0:
             return False, f"⚠️ Ya existe un cierre para la fecha {fecha}"
         
-        # Insertar registro por cada producto
         count = 0
         for prod in productos_con_datos:
             if IS_LOCAL:
@@ -253,16 +242,14 @@ def obtener_cierre_por_fecha(fecha: str) -> List[Dict[str, Any]]:
     try:
         if IS_LOCAL:
             cur.execute("""SELECT c.*, p.nombre FROM cierres_inventario c
-                          JOIN productos p ON c.producto_id = p.id 
-                          WHERE c.fecha = ? ORDER BY p.nombre""", (fecha,))
+                          JOIN productos p ON c.producto_id = p.id WHERE c.fecha = ? ORDER BY p.nombre""", (fecha,))
         else:
             cur.execute("""SELECT c.*, p.nombre FROM cierres_inventario c
-                          JOIN productos p ON c.producto_id = p.id 
-                          WHERE c.fecha = %s ORDER BY p.nombre""", (fecha,))
+                          JOIN productos p ON c.producto_id = p.id WHERE c.fecha = %s ORDER BY p.nombre""", (fecha,))
         
         rows = cur.fetchall()
         cols = ['id','fecha','producto_id','inv_ini','entra','ventas','bajas','inv_final','observaciones','creado_por','fecha_cierre','nombre']
-        return [dict(row) for row in rows] if not IS_LOCAL else [dict(zip(cols, r)) for r in rows]
+        return [dict(zip(cols, r)) for r in rows]
     except Exception as e:
         print(f"❌ Error obteniendo cierre por fecha: {e}")
         return []
