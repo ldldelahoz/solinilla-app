@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python3
-"""Solinilla Inventory API - Versión Ultra-Robusta"""
+"""Solinilla Inventory API - Versión Final Corregida"""
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -18,7 +18,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-from src.db import init_db
+from src.db import init_db, get_conn
 from src.auth import verify_password, create_access_token, decode_token
 from src.inventory import (
     obtener_usuario_por_username, obtener_productos, crear_producto, eliminar_producto,
@@ -173,49 +173,139 @@ def obtener_cierre_api(fecha: str, user: dict = Depends(require_auth)):
 
 @app.post("/api/cierre")
 def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict = Depends(require_auth)):
+    """
+    Cierra el inventario del día y ACTUALIZA el stock real.
+    """
+    conn = None
     try:
         productos = obtener_productos()
         movimientos = obtener_movimientos_dia(fecha)
         productos_con_cierre = []
+        
         for prod in productos:
+            # 1. Obtener cierre anterior
             cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
-            inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
+            
+            if cierre_ant:
+                # Hay cierre anterior → usar su INV FINAL
+                inv_ini = cierre_ant['inv_final']
+            else:
+                # PRIMER DÍA → usar stock actual de la BD
+                inv_ini = prod['stock']
+            
+            # 2. Calcular movimientos del día
             entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
             ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
+            
+            # 3. Calcular INV FINAL
             inv_final = inv_ini + entra - ventas
+            
             productos_con_cierre.append({
-                'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra,
-                'ventas': ventas, 'bajas': 0, 'inv_final': inv_final, 'observaciones': ''
+                'producto_id': prod['id'],
+                'inv_ini': inv_ini,
+                'entra': entra,
+                'ventas': ventas,
+                'bajas': 0,
+                'inv_final': inv_final,
+                'observaciones': ''
             })
+        
+        # 4. Guardar cierre en base de datos
         ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
-        if ok:
-            return {"msg": msg, "success": True}
-        raise HTTPException(status_code=400, detail=msg)
+        
+        if not ok:
+            raise HTTPException(status_code=400, detail=msg)
+        
+        # 5. ⚠️ ACTUALIZAR STOCK REAL en la tabla productos
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        for prod_cierre in productos_con_cierre:
+            cur.execute("""
+                UPDATE productos 
+                SET stock = %s 
+                WHERE id = %s
+            """, (prod_cierre['inv_final'], prod_cierre['producto_id']))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return {
+            "msg": f"✅ Inventario cerrado. {len(productos_con_cierre)} productos actualizados.",
+            "success": True,
+            "fecha": fecha
+        }
+        
+    except HTTPException:
+        if conn:
+            conn.close()
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if conn:
+            conn.rollback()
+            conn.close()
+        print(f"❌ Error cerrando inventario: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al cerrar: {str(e)}")
 
+# ==========================================
+# 📋 MAPEO DE CATEGORÍAS (DEBE IR ANTES DE calcular_inventario)
+# ==========================================
 CATEGORIA_MAP = {
-    "SODA HADSU": "BEBIDAS", "COCACOLAPET 250ML": "BEBIDAS", "GINGER DRY 300ML": "BEBIDAS",
-    "COCA COLA PET 400": "BEBIDAS", "POSTOBON PET 400": "BEBIDAS", "COCA COLA ZERO 400": "BEBIDAS",
-    "GATORADE": "BEBIDAS", "CERVEZA AGUILA LIGHT": "BEBIDAS", "CERVEZA AGUILA NEGRA": "BEBIDAS",
-    "CERVEZA CLUB COLOMBIA": "BEBIDAS", "CERVEZA STELLA": "BEBIDAS", "AGUA PET 600": "BEBIDAS",
-    "TE HATSU 500 ML": "BEBIDAS", "CERVEZA CORONA 330ML": "BEBIDAS", "SODA SCHWEPPERS": "BEBIDAS",
-    "AGUARDIENTE 375": "RON Y VINOS", "AGUARDIENTE 750": "RON Y VINOS", "BUCHANNA 375": "RON Y VINOS",
-    "BUCHANNA 750": "RON Y VINOS", "OLD PARR 750": "RON Y VINOS", "RON CALDAS 375": "RON Y VINOS",
-    "RON MEDELLIN 375": "RON Y VINOS", "RON MEDELLIN 750": "RON Y VINOS", "TEQUILA JOSE CUERVO 750": "RON Y VINOS",
-    "TRIPLESECC": "RON Y VINOS", "V.BLANCO S.B SANTA RITA 750": "RON Y VINOS",
-    "V.TINTO C.B 750 SANT RITA": "RON Y VINOS", "V.TINTO POLERO 750ML": "RON Y VINOS",
-    "PULPA DE FRESA 90GR": "PULPAS Y FRUTAS", "PULPA DE MANGO 90 GR": "PULPAS Y FRUTAS",
-    "PULPA DE MARACUYA 90 GR": "PULPAS Y FRUTAS", "PULPA LULO 90 GR": "PULPAS Y FRUTAS",
-    "PULPA DE MORA 90 GR": "PULPAS Y FRUTAS", "PULPA GUANABANA 90 GR": "PULPAS Y FRUTAS",
-    "PULPA DE COROZO KL": "PULPAS Y FRUTAS", "LIMON": "PULPAS Y FRUTAS", "NARANJA": "PULPAS Y FRUTAS",
-    "CHOCO CONO": "HELADOS Y POSTRES", "HELADO DE GALLETA": "HELADOS Y POSTRES",
-    "PALETA CHOCO BREACK": "HELADOS Y POSTRES", "HELADO CASERO": "HELADOS Y POSTRES",
-    "POSTRES DE LA CASA": "HELADOS Y POSTRES", "CREMA DE COCO": "HELADOS Y POSTRES",
-    "CEREZA": "HELADOS Y POSTRES", "CREMA DE LECHE": "HELADOS Y POSTRES",
-    "V.BLANCO POLERO": "HELADOS Y POSTRES", "AZUCAR POR KILO": "HELADOS Y POSTRES", "CAFÉ POR SOBRE": "HELADOS Y POSTRES"
+    "SODA HADSU": "BEBIDAS",
+    "COCACOLAPET 250ML": "BEBIDAS",
+    "GINGER DRY 300ML": "BEBIDAS",
+    "COCA COLA PET 400": "BEBIDAS",
+    "POSTOBON PET 400": "BEBIDAS",
+    "COCA COLA ZERO 400": "BEBIDAS",
+    "GATORADE": "BEBIDAS",
+    "CERVEZA AGUILA LIGHT": "BEBIDAS",
+    "CERVEZA AGUILA NEGRA": "BEBIDAS",
+    "CERVEZA CLUB COLOMBIA": "BEBIDAS",
+    "CERVEZA STELLA": "BEBIDAS",
+    "AGUA PET 600": "BEBIDAS",
+    "TE HATSU 500 ML": "BEBIDAS",
+    "CERVEZA CORONA 330ML": "BEBIDAS",
+    "SODA SCHWEPPERS": "BEBIDAS",
+    "AGUARDIENTE 375": "RON Y VINOS",
+    "AGUARDIENTE 750": "RON Y VINOS",
+    "BUCHANNA 375": "RON Y VINOS",
+    "BUCHANNA 750": "RON Y VINOS",
+    "OLD PARR 750": "RON Y VINOS",
+    "RON CALDAS 375": "RON Y VINOS",
+    "RON MEDELLIN 375": "RON Y VINOS",
+    "RON MEDELLIN 750": "RON Y VINOS",
+    "TEQUILA JOSE CUERVO 750": "RON Y VINOS",
+    "TRIPLESECC": "RON Y VINOS",
+    "V.BLANCO S.B SANTA RITA 750": "RON Y VINOS",
+    "V.TINTO C.B 750 SANT RITA": "RON Y VINOS",
+    "V.TINTO POLERO 750ML": "RON Y VINOS",
+    "PULPA DE FRESA 90GR": "PULPAS Y FRUTAS",
+    "PULPA DE MANGO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MARACUYA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA LULO 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE MORA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA GUANABANA 90 GR": "PULPAS Y FRUTAS",
+    "PULPA DE COROZO KL": "PULPAS Y FRUTAS",
+    "LIMON": "PULPAS Y FRUTAS",
+    "NARANJA": "PULPAS Y FRUTAS",
+    "CHOCO CONO": "HELADOS Y POSTRES",
+    "HELADO DE GALLETA": "HELADOS Y POSTRES",
+    "PALETA CHOCO BREACK": "HELADOS Y POSTRES",
+    "HELADO CASERO": "HELADOS Y POSTRES",
+    "POSTRES DE LA CASA": "HELADOS Y POSTRES",
+    "CREMA DE COCO": "HELADOS Y POSTRES",
+    "CEREZA": "HELADOS Y POSTRES",
+    "CREMA DE LECHE": "HELADOS Y POSTRES",
+    "V.BLANCO POLERO": "HELADOS Y POSTRES",
+    "AZUCAR POR KILO": "HELADOS Y POSTRES",
+    "CAFÉ POR SOBRE": "HELADOS Y POSTRES"
 }
 
+# ==========================================
+# 📊 FUNCIÓN DE CÁLCULO DE INVENTARIO
+# ==========================================
 def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: str) -> Dict[str, List[dict]]:
     cats = {"BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": []}
     seen_ids = set()
@@ -248,6 +338,9 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
         cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
 
+# ==========================================
+# 📄 ENDPOINT DE PDF
+# ==========================================
 @app.get("/api/reporte/pdf")
 def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
     try:
@@ -256,28 +349,23 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
         cats = calcular_inventario(productos, movimientos, fecha)
         
         buffer = BytesIO()
-        # Formato horizontal A4 para que quepa la tabla ancha
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
                                 rightMargin=0.4*inch, leftMargin=0.4*inch, 
                                 topMargin=0.5*inch, bottomMargin=0.5*inch)
         elements = []
         
-        # Título principal
         elements.append(Paragraph("INVENTARIO RESTAURANTE", 
                                  ParagraphStyle('Title', fontSize=14, alignment=1, fontName='Helvetica-Bold', spaceAfter=4)))
         elements.append(Paragraph(f"FECHA: {fecha}", 
                                  ParagraphStyle('Date', fontSize=10, alignment=1, spaceAfter=8)))
         
-        # Datos de la tabla con columnas EXACTAS como la foto
         data = [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV. FINAL', 'BAJAS', 'OBSERVACIONES']]
         col_widths = [2.6*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.6*inch, 1.5*inch]
         
-        # Orden de categorías
         orden_categorias = ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]
         
         for cat_name in orden_categorias:
             if cat_name in cats and cats[cat_name]:
-                # Fila de categoría (fondo gris claro, negrita)
                 data.append([cat_name, '', '', '', '', '', '', ''])
                 
                 for prod in cats[cat_name]:
@@ -292,34 +380,24 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
                         prod['observaciones']
                     ])
         
-        # Crear tabla
         table = Table(data, colWidths=col_widths)
         table_style = TableStyle([
-            # Encabezado principal
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e0e0e0')),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 9),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-            
-            # Grid completo (bordes negros finos como la hoja)
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            
-            # Alineación general
             ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
             ('FONTSIZE', (0, 1), (-1, -1), 8),
-            
-            # Primera columna (Productos) alineada a la izquierda
             ('ALIGN', (0, 1), (0, -1), 'LEFT'),
         ])
         
-        # Colorear filas de categorías
         current_row = 1
         for cat_name in orden_categorias:
             if cat_name in cats and cats[cat_name]:
                 len_cat = len(cats[cat_name])
-                # Fila de título de categoría
                 table_style.add('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#d0d0d0'))
                 table_style.add('FONTNAME', (0, current_row), (0, current_row), 'Helvetica-Bold')
                 table_style.add('SPAN', (0, current_row), (-1, current_row))
@@ -331,11 +409,7 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
         table.setStyle(table_style)
         elements.append(table)
         
-        # Espacio para firmas al final (como en la foto)
         elements.append(Spacer(1, 0.4*inch))
-        firma_style = ParagraphStyle('Firma', fontSize=9, alignment=0, spaceBefore=5)
-        
-        # Tabla de firmas
         firmas_data = [
             ['NOMBRE INV INICIAL:', '', 'NOMBRE INV FINAL:', ''],
             ['_________________________', '', '_________________________', '']
@@ -351,19 +425,17 @@ def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
         doc.build(elements)
         buffer.seek(0)
         
-        # inline permite que el navegador muestre el PDF con opciones de imprimir/guardar
         return StreamingResponse(buffer, media_type="application/pdf", 
                                 headers={"Content-Disposition": f"inline; filename=inventario_{fecha}.pdf"})
     except Exception as e:
         print(f"❌ ERROR PDF: {e}")
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
+
 @app.get("/api/health")
 def health():
     return {"status": "alive", "timestamp": datetime.utcnow().isoformat()}
 
-# Manejador global de errores
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     print(f"❌ ERROR GLOBAL: {exc}")
