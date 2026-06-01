@@ -170,27 +170,32 @@
                 body: body ? JSON.stringify(body) : null 
             });
             
-            // Si hay error 401, cerrar sesión
             if (response.status === 401) {
                 logout();
                 return;
             }
             
-            // Intentar parsear JSON
             try {
                 const data = await response.json();
                 
-                // Si la respuesta no es exitosa, lanzar error
                 if (!response.ok) {
-                    throw new Error(data.detail?.msg || data.detail || data.msg || 'Error en la petición');
+                    // ✅ CORRECCIÓN: FastAPI envía el mensaje directamente en data.detail (string)
+                    // No usar data.detail?.msg porque detail NO es un objeto
+                    const errorMsg = typeof data.detail === 'string' ? data.detail : (data.detail?.msg || data.msg || 'Error en la petición');
+                    throw new Error(errorMsg);
                 }
                 
                 return data;
             } catch (e) {
                 console.error('Error parsing response:', e);
-                throw new Error('Error de conexión con el servidor');
+                // Si es error de red, lanzar mensaje genérico
+                if (e.name === 'TypeError' && e.message.includes('fetch')) {
+                    throw new Error('Error de conexión con el servidor');
+                }
+                throw e;
             }
 }
+
         async function loadInventory() {
             const data = await apiCall('/api/productos');
             // Eliminar duplicados usando un Set de IDs
