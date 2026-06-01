@@ -107,12 +107,23 @@ def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: O
         cur.close()
         conn.close()
 
-def obtener_movimientos_dia(fecha: str) -> List[Dict[str, Any]]:
+def obtener_movimientos_dia(fecha: str, hora_corte: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Obtiene movimientos de un día, respetando la hora de cierre si existe."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""SELECT m.id, m.producto_id, m.tipo, m.cantidad, m.motivo, m.fecha 
-                      FROM movimientos m WHERE DATE(m.fecha) = DATE(%s) ORDER BY m.fecha DESC""", (fecha,))
+        if hora_corte:
+            # ✅ Solo movimientos ANTES o IGUAL al cierre
+            cur.execute("""SELECT m.id, m.producto_id, m.tipo, m.cantidad, m.motivo, m.fecha 
+                          FROM movimientos m 
+                          WHERE DATE(m.fecha) = DATE(%s) AND m.fecha <= %s 
+                          ORDER BY m.fecha DESC""", (fecha, hora_corte))
+        else:
+            cur.execute("""SELECT m.id, m.producto_id, m.tipo, m.cantidad, m.motivo, m.fecha 
+                          FROM movimientos m 
+                          WHERE DATE(m.fecha) = DATE(%s) 
+                          ORDER BY m.fecha DESC""", (fecha,))
+                          
         rows = cur.fetchall()
         cols = ['id', 'producto_id', 'tipo', 'cantidad', 'motivo', 'fecha']
         return [dict(zip(cols, r)) for r in rows]
@@ -122,7 +133,6 @@ def obtener_movimientos_dia(fecha: str) -> List[Dict[str, Any]]:
     finally:
         cur.close()
         conn.close()
-
 def obtener_cierre_anterior(producto_id: str, fecha_actual: str) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     cur = conn.cursor()

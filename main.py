@@ -300,23 +300,38 @@ CATEGORIA_MAP = {
     "AZUCAR POR KILO": "HELADOS Y POSTRES",
     "CAFÉ POR SOBRE": "HELADOS Y POSTRES"
 }
-
+def obtener_hora_cierre(fecha: str) -> Optional[str]:
+    """Obtiene la hora exacta del último cierre registrado."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        # Busca la fecha_cierre (timestamp) del cierre de esa fecha
+        cur.execute("SELECT fecha_cierre FROM cierres_inventario WHERE fecha = %s LIMIT 1", (fecha,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row and row[0]:
+            return row[0].isoformat() # Devuelve string para comparar
+        return None
+    except Exception as e:
+        print(f"Error obteniendo hora cierre: {e}")
+        return None
 # ==========================================
 # 📊 FUNCIÓN DE CÁLCULO DE INVENTARIO
 # ==========================================
+# 1. Reemplaza calcular_inventario con esta versión (segura con Decimals)
 def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: str) -> Dict[str, List[dict]]:
     cats = {"BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": []}
     seen_ids = set()
     
     for prod in productos:
-        if prod['id'] in seen_ids:
-            continue
+        if prod['id'] in seen_ids: continue
         seen_ids.add(prod['id'])
         
         cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
         cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
         
-        # ✅ CONVERSIÓN EXPLÍCITA A FLOAT PARA EVITAR CHOQUE CON DECIMAL
+        # ✅ Conversión segura a float para evitar error Decimal
         inv_ini = float(cierre_ant['inv_final']) if cierre_ant and cierre_ant.get('inv_final') is not None else 0.0
         entra = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'))
         ventas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'))
@@ -336,9 +351,94 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
             'observaciones': ''
         })
     
-    for cat in cats:
-        cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
+    for cat in cats: cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
+
+# 2. Reemplaza el endpoint de CIERRE
+@app.post("/api/cierre")
+def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict = Depends(require_auth)):
+    try:
+        # ✅ Obtener hora de corte (si ya existe cierre previo, se respeta)
+        hora_corte = obtener_hora_cierre(fecha)
+        productos = obtener_productos()
+        movimientos = obtener_movimientos_dia(fecha, hora_corte) # Filtra por hora
+        
+        productos_con_cierre = []
+        for prod in productos:
+            cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
+            inv_ini = float(cierre_ant['inv_final']) if cierre_ant and cierre_ant.get('inv_final') is not None else float(prod['stock'])
+            
+            entra = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'))
+            ventas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'))
+            bajas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja'))
+            inv_final = inv_ini + entra - ventas - bajas
+            
+            productos_con_cierre.append({'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra, 'ventas': ventas, 'bajas': bajas, 'inv_final': inv_final, 'observaciones': ''})
+        
+        ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
+        if not ok: raise HTTPException(status_code=400, detail=msg)
+        
+        # Actualizar stock real
+        conn = get_conn()
+        cur = conn.cursor()
+        for pc in productos_con_cierre:
+            cur.execute("UPDATE productos SET stock = %s WHERE id = %s", (pc['inv_final'], pc['producto_id']))
+        conn.commit(); cur.close(); conn.close()
+        
+        return {"msg": f"✅ Inventario cerrado hasta {hora_corte or 'fin del día'}. {len(productos_con_cierre)} productos actualizados.", "success": True}
+    except HTTPException: raise
+    except Exception as e:
+        print(f"❌ Error cierre: {e}"); traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 3. Reemplaza el endpoint de PDF
+@app.get("/api/reporte/pdf")
+def generar_pdf(fecha: str = Query(...), user: dict = Depends(check_url_token)):
+    try:
+        hora_corte = obtener_hora_cierre(fecha)
+        productos = obtener_productos()
+        movimientos = obtener_movimientos_dia(fecha, hora_corte) # ✅ Filtra movimientos post-cierre
+        cats = calcular_inventario(productos, movimientos, fecha)
+        
+        # ... (El resto del código del PDF se mantiene igual, usa 'cats' ya filtrado)
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.4*inch, leftMargin=0.4*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        elements = []
+        elements.append(Paragraph("INVENTARIO RESTAURANTE", ParagraphStyle('Title', fontSize=14, alignment=1, fontName='Helvetica-Bold', spaceAfter=4)))
+        elements.append(Paragraph(f"FECHA: {fecha} {f'(Corte: {hora_corte[:16]})' if hora_corte else ''}", ParagraphStyle('Date', fontSize=10, alignment=1, spaceAfter=8)))
+        
+        data = [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS', 'INV. FINAL', 'BAJAS', 'OBSERVACIONES']]
+        col_widths = [2.6*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.6*inch, 1.5*inch]
+        orden_categorias = ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES"]
+        
+        for cat_name in orden_categorias:
+            if cat_name in cats and cats[cat_name]:
+                data.append([cat_name, '', '', '', '', '', '', ''])
+                for prod in cats[cat_name]:
+                    data.append([prod['nombre'], str(prod['inv_ini']), str(prod['entra']), str(prod['total']), str(prod['ventas']), str(prod['inv_final']), prod['bajas'], prod['observaciones']])
+        
+        table = Table(data, colWidths=col_widths)
+        table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e0e0e0')), ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 9), ('ALIGN', (0, 0), (-1, 0), 'CENTER'), ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'), ('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('ALIGN', (0, 1), (-1, -1), 'CENTER'), ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'), ('FONTSIZE', (0, 1), (-1, -1), 8), ('ALIGN', (0, 1), (0, -1), 'LEFT')]))
+        
+        current_row = 1
+        for cat_name in orden_categorias:
+            if cat_name in cats and cats[cat_name]:
+                len_cat = len(cats[cat_name])
+                table.setStyle(TableStyle([('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#d0d0d0')), ('FONTNAME', (0, current_row), (0, current_row), 'Helvetica-Bold'), ('SPAN', (0, current_row), (-1, current_row)), ('ALIGN', (0, current_row), (-1, current_row), 'CENTER'), ('FONTSIZE', (0, current_row), (-1, current_row), 9)]))
+                current_row += 1 + len_cat
+        
+        elements.append(table)
+        elements.append(Spacer(1, 0.4*inch))
+        firmas_table = Table([['NOMBRE INV INICIAL:', '', 'NOMBRE INV FINAL:', ''], ['_________________________', '', '_________________________', '']], colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+        firmas_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'LEFT'), ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'), ('FONTSIZE', (0, 0), (-1, -1), 9)]))
+        elements.append(firmas_table)
+        
+        doc.build(elements)
+        buffer.seek(0)
+        return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename=inventario_{fecha}.pdf"})
+    except Exception as e:
+        print(f"❌ ERROR PDF: {e}"); traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 # ==========================================
 # 📄 ENDPOINT DE PDF
 # ==========================================
