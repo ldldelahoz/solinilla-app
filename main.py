@@ -357,39 +357,72 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
 # 2. Reemplaza el endpoint de CIERRE
 @app.post("/api/cierre")
 def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict = Depends(require_auth)):
+    conn = None
     try:
-        # ✅ Obtener hora de corte (si ya existe cierre previo, se respeta)
+        # 1. Verificar si ya existe cierre para esta fecha
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM cierres_inventario WHERE fecha = %s", (fecha,))
+        if cur.fetchone()[0] > 0:
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=400, detail="⚠️ YA CERRADO: El inventario de esta fecha ya se cerró.\nLos movimientos nuevos se reflejarán automáticamente en el DÍA SIGUIENTE.")
+
+        # 2. Obtener hora de corte y datos
         hora_corte = obtener_hora_cierre(fecha)
         productos = obtener_productos()
-        movimientos = obtener_movimientos_dia(fecha, hora_corte) # Filtra por hora
-        
+        movimientos = obtener_movimientos_dia(fecha, hora_corte)
         productos_con_cierre = []
+
+        # 3. Calcular inventario por producto
         for prod in productos:
             cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
-            inv_ini = float(cierre_ant['inv_final']) if cierre_ant and cierre_ant.get('inv_final') is not None else float(prod['stock'])
             
+            # ✅ Conversión segura a float para evitar error Decimal + float
+            inv_ini = float(cierre_ant['inv_final']) if cierre_ant and cierre_ant.get('inv_final') is not None else float(prod['stock'])
             entra = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'))
             ventas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'))
             bajas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja'))
+            
             inv_final = inv_ini + entra - ventas - bajas
             
-            productos_con_cierre.append({'producto_id': prod['id'], 'inv_ini': inv_ini, 'entra': entra, 'ventas': ventas, 'bajas': bajas, 'inv_final': inv_final, 'observaciones': ''})
-        
+            productos_con_cierre.append({
+                'producto_id': prod['id'],
+                'inv_ini': inv_ini,
+                'entra': entra,
+                'ventas': ventas,
+                'bajas': bajas,
+                'inv_final': inv_final,
+                'observaciones': ''
+            })
+
+        # 4. Guardar cierre en base de datos
         ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
-        if not ok: raise HTTPException(status_code=400, detail=msg)
-        
-        # Actualizar stock real
-        conn = get_conn()
-        cur = conn.cursor()
+        if not ok:
+            raise HTTPException(status_code=400, detail=msg)
+
+        # 5. Actualizar stock real en la tabla productos
+        cur2 = conn.cursor()
         for pc in productos_con_cierre:
-            cur.execute("UPDATE productos SET stock = %s WHERE id = %s", (pc['inv_final'], pc['producto_id']))
-        conn.commit(); cur.close(); conn.close()
-        
-        return {"msg": f"✅ Inventario cerrado hasta {hora_corte or 'fin del día'}. {len(productos_con_cierre)} productos actualizados.", "success": True}
-    except HTTPException: raise
+            cur2.execute("UPDATE productos SET stock = %s WHERE id = %s", (pc['inv_final'], pc['producto_id']))
+        conn.commit()
+        cur2.close()
+        conn.close()
+
+        # 6. Respuesta exitosa
+        return {"msg": "✅ INVENTARIO CERRADO EXITOSAMENTE.\n\nLos movimientos registrados después de esta hora se reflejarán en el inventario del DÍA SIGUIENTE.", "success": True}
+
+    except HTTPException:
+        if conn:
+            conn.close()
+        raise
     except Exception as e:
-        print(f"❌ Error cierre: {e}"); traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        if conn:
+            conn.rollback()
+            conn.close()
+        print(f"❌ Error cierre: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al cerrar: {str(e)}")
 
 # 3. Reemplaza el endpoint de PDF
 @app.get("/api/reporte/pdf")
