@@ -342,17 +342,27 @@
 
         async function cerrarInventario() {
             const fecha = document.getElementById('cierre-date').value;
-            if (!fecha) return alert('Selecciona fecha');
-            if (!confirm('¿Cerrar inventario?')) return;
-            const res = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
-            alert(res.msg);
-        }
+            if (!fecha) return alert('Selecciona una fecha');
+            
+            if (!confirm('¿Cerrar inventario del día ' + fecha + '?')) return;
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('report-date').valueAsDate = new Date();
-            document.getElementById('cierre-date').valueAsDate = new Date();
-            loadInventory();
-        });
+            try {
+                // Intentar cerrar
+                const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
+                
+                // Si funciona (200 OK), mostrar mensaje de éxito
+                alert(result.msg || '✅ Inventario cerrado correctamente.');
+                loadInventory();
+                
+            } catch (error) {
+                // Si falla (400 Bad Request), mostrar mensaje del servidor
+                // 'error.detail' contiene el texto "⚠️ YA CERRADO..."
+                let mensaje = error.detail || error.message || 'Error al conectar';
+                
+                // Reemplazamos \n por saltos de línea reales para que se vea bonito
+                alert(mensaje.replace(/\\n/g, '\n'));
+            }
+        }
     </script>
 </body>
 </html>
