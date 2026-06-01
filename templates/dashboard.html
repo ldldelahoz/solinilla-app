@@ -138,7 +138,7 @@
             <h3 style="color: var(--danger);">🔒 Cerrar Inventario</h3>
             <p style="font-size: 0.9rem; margin-bottom: 10px;">Guarda el estado actual como cierre del día.</p>
             <input type="date" id="cierre-date">
-            <button class="btn btn-danger" onclick="alert('🔒 BOTÓN FUNCIONA'); cerrarInventario()">🔒 CERRAR DÍA</button>
+            <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR DÍA</button>
         </div>
     </div>
 
@@ -346,23 +346,27 @@
         }
 
         async function cerrarInventario() {
+            console.log("🔒 [DEBUG] Botón cerrar clickeado");
+            
             const fecha = document.getElementById('cierre-date').value;
             if (!fecha) return alert('Selecciona una fecha');
             if (!confirm('¿Cerrar inventario del día ' + fecha + '?')) return;
 
             try {
+                console.log("📡 [DEBUG] Enviando petición...");
                 const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
-                alert('✅ ' + result.msg);
+                console.log("✅ [DEBUG] Éxito:", result);
+                alert('✅ ' + (result.msg || 'Inventario cerrado'));
                 loadInventory();
             } catch (error) {
-                // FastAPI devuelve el error en error.message
-                let msg = error.message || error.detail || 'Error al conectar';
+                console.log("❌ [DEBUG] Error:", error.message);
+                let msg = error.message || '';
                 
-                // Si detecta que ya estaba cerrado, muestra TU mensaje exacto
-                if (msg.includes('YA CERRADO') || msg.includes('ya se cerró')) {
-                    alert('⚠️ Ya se hizo el cierre.\nEspere al día siguiente para continuar.');
+                // ✅ DETECCIÓN MEJORADA (busca palabras clave más amplias)
+                if (msg.includes('Ya existe') || msg.includes('cierre') || msg.includes('CERRADO')) {
+                    alert("⚠️ Ya se hizo el cierre.\nEspere al día siguiente para continuar.");
                 } else {
-                    alert('❌ ' + msg);
+                    alert("❌ " + msg);
                 }
             }
         }
