@@ -150,6 +150,11 @@ def get_movs(fecha: Optional[str] = None, user: dict = Depends(require_auth)):
 def add_mov(m: MovimientoCreate, user: dict = Depends(require_auth)):
     try:
         print(f"📝 Registrando movimiento: {m.producto_id}, {m.tipo}, {m.cantidad}")
+        
+        # Validar que el tipo sea correcto
+        if m.tipo not in ['entrada', 'salida', 'baja']:
+            raise HTTPException(status_code=400, detail="Tipo inválido. Use: entrada, salida o baja")
+        
         ok, msg = registrar_movimiento(m.producto_id, m.tipo, m.cantidad, m.motivo)
         if ok:
             print(f"✅ Movimiento registrado: {msg}")
@@ -175,6 +180,7 @@ def obtener_cierre_api(fecha: str, user: dict = Depends(require_auth)):
 def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict = Depends(require_auth)):
     """
     Cierra el inventario del día y ACTUALIZA el stock real.
+    Incluye: Entradas, Ventas (salidas) y Bajas (mermas).
     """
     conn = None
     try:
@@ -187,36 +193,35 @@ def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict 
             cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
             
             if cierre_ant:
-                # Hay cierre anterior → usar su INV FINAL
                 inv_ini = cierre_ant['inv_final']
             else:
-                # PRIMER DÍA → usar stock actual de la BD
                 inv_ini = prod['stock']
             
             # 2. Calcular movimientos del día
             entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
             ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
+            bajas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja')
             
-            # 3. Calcular INV FINAL
-            inv_final = inv_ini + entra - ventas
+            # 3. Calcular INV FINAL (resta ventas Y bajas)
+            inv_final = inv_ini + entra - ventas - bajas
             
             productos_con_cierre.append({
                 'producto_id': prod['id'],
                 'inv_ini': inv_ini,
                 'entra': entra,
                 'ventas': ventas,
-                'bajas': 0,
+                'bajas': bajas,  # ✅ Ahora sí incluye las bajas
                 'inv_final': inv_final,
                 'observaciones': ''
             })
         
-        # 4. Guardar cierre en base de datos
+        # 4. Guardar cierre
         ok, msg = cerrar_inventario_dia(fecha, productos_con_cierre, user.get('sub', 'admin'))
         
         if not ok:
             raise HTTPException(status_code=400, detail=msg)
         
-        # 5. ⚠️ ACTUALIZAR STOCK REAL en la tabla productos
+        # 5. ACTUALIZAR STOCK REAL
         conn = get_conn()
         cur = conn.cursor()
         
@@ -248,7 +253,6 @@ def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict 
         print(f"❌ Error cerrando inventario: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error al cerrar: {str(e)}")
-
 # ==========================================
 # 📋 MAPEO DE CATEGORÍAS (DEBE IR ANTES DE calcular_inventario)
 # ==========================================

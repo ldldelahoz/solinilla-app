@@ -109,8 +109,9 @@
             
             <label>Tipo:</label>
             <select id="mov-type">
-                <option value="entrada">🟢 Entrada</option>
-                <option value="salida">🔴 Salida</option>
+                <option value="entrada">🟢 Entrada (Compra/Reposición)</option>
+                <option value="salida">🔴 Salida (Venta/Consumo)</option>
+                <option value="baja">⚠️ Baja (Merma/Daño/Vencido)</option>
             </select>
             
             <label>Motivo:</label>
@@ -312,10 +313,24 @@
             const tbody = document.querySelector('#movements-table tbody');
             tbody.innerHTML = '';
             (data.movimientos || []).forEach(m => {
-                const color = m.tipo === 'entrada' ? 'green' : 'red';
-                const icon = m.tipo === 'entrada' ? '🟢' : '🔴';
+                let color, icon, label;
+                
+                if (m.tipo === 'entrada') {
+                    color = 'green';
+                    icon = '🟢';
+                    label = 'Entrada';
+                } else if (m.tipo === 'baja') {
+                    color = 'orange';
+                    icon = '⚠️';
+                    label = 'Baja';
+                } else {
+                    color = 'red';
+                    icon = '🔴';
+                    label = 'Salida';
+                }
+                
                 const pName = productsData.find(p => p.id === m.producto_id)?.nombre || m.producto_id;
-                tbody.innerHTML += `<tr><td style="color:${color}">${icon} ${m.tipo}</td><td>${pName}</td><td>${m.cantidad}</td><td>${m.motivo || '-'}</td></tr>`;
+                tbody.innerHTML += `<tr><td style="color:${color}">${icon} ${label}</td><td>${pName}</td><td>${m.cantidad}</td><td>${m.motivo || '-'}</td></tr>`;
             });
         }
 
