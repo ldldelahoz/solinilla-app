@@ -322,10 +322,15 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
         cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
         cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
         inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
+        
+        # ✅ Calcular entradas, ventas y BAJAS por separado
         entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
         ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
+        bajas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja')
+        
         total = inv_ini + entra
-        inv_final = total - ventas
+        # ✅ El final descuenta tanto ventas como bajas
+        inv_final = total - ventas - bajas
         
         cats[cat].append({
             'nombre': prod['nombre'],
@@ -334,14 +339,13 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
             'total': total if total != 0 else '',
             'ventas': ventas if ventas != 0 else '',
             'inv_final': inv_final if inv_final != 0 else '',
-            'bajas': '',
+            'bajas': bajas if bajas != 0 else '',
             'observaciones': ''
         })
     
     for cat in cats:
         cats[cat] = sorted(cats[cat], key=lambda x: x['nombre'])
     return cats
-
 # ==========================================
 # 📄 ENDPOINT DE PDF
 # ==========================================

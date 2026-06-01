@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
-"""Operaciones de inventario para Solinilla (PostgreSQL Compatible)"""
+"""Operaciones de inventario para Solinilla (Compatible con 'baja')"""
 
-from src.db import get_conn, IS_LOCAL
+from src.db import get_conn
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-# ==========================================
-#  USUARIOS
-# ==========================================
-
 def obtener_usuario_por_username(username: str) -> Optional[Dict[str, Any]]:
-    """Busca un usuario por su nombre de usuario."""
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute("SELECT username, password_hash, rol FROM usuarios WHERE username = %s", (username,))
         user = cur.fetchone()
         if user:
-            # Convertir tupla a diccionario de forma segura
             return dict(zip(['username', 'password_hash', 'rol'], user))
         return None
     except Exception as e:
@@ -27,12 +21,7 @@ def obtener_usuario_por_username(username: str) -> Optional[Dict[str, Any]]:
         cur.close()
         conn.close()
 
-# ==========================================
-# 📦 PRODUCTOS
-# ==========================================
-
 def obtener_productos() -> List[Dict[str, Any]]:
-    """Obtiene todos los productos."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -48,7 +37,6 @@ def obtener_productos() -> List[Dict[str, Any]]:
         conn.close()
 
 def crear_producto(id_prod: str, nombre: str, stock: float = 0.0, fecha_vencimiento: Optional[str] = None) -> tuple:
-    """Crea un nuevo producto."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -64,7 +52,6 @@ def crear_producto(id_prod: str, nombre: str, stock: float = 0.0, fecha_vencimie
         conn.close()
 
 def eliminar_producto(id_prod: str) -> tuple:
-    """Elimina un producto."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -78,30 +65,27 @@ def eliminar_producto(id_prod: str) -> tuple:
         cur.close()
         conn.close()
 
-# ==========================================
-#  MOVIMIENTOS
-# ==========================================
-
 def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: Optional[str] = None) -> tuple:
-    """Registra entrada o salida y actualiza el stock."""
+    """Registra entrada, salida o BAJA y actualiza el stock."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # Obtener stock actual (SIEMPRE usamos índice 0 porque fetchone devuelve tupla en PostgreSQL)
+        # Obtener stock actual
         cur.execute("SELECT stock FROM productos WHERE id = %s", (producto_id,))
         prod = cur.fetchone()
         
         if not prod:
             return False, "❌ Producto no encontrado"
         
-        stock_actual = prod[0]  # ✅ CORRECCIÓN: Usar índice 0
+        stock_actual = prod[0]
         
+        # ✅ MODIFICACIÓN: Ahora acepta 'baja' para restar stock
         if tipo == "entrada":
             nuevo_stock = stock_actual + cantidad
-        elif tipo == "salida":
+        elif tipo in ["salida", "baja"]:
             nuevo_stock = stock_actual - cantidad
             if nuevo_stock < 0:
-                return False, "❌ Stock insuficiente"
+                return False, "❌ Stock insuficiente para esta salida/baja"
         else:
             return False, "❌ Tipo de movimiento inválido"
         
@@ -113,7 +97,7 @@ def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: O
                    (producto_id, tipo, cantidad, motivo))
         
         conn.commit()
-        return True, f"✅ Movimiento registrado. Nuevo stock: {nuevo_stock}"
+        return True, f"✅ Movimiento '{tipo}' registrado. Nuevo stock: {nuevo_stock}"
         
     except Exception as e:
         conn.rollback()
@@ -124,7 +108,6 @@ def registrar_movimiento(producto_id: str, tipo: str, cantidad: float, motivo: O
         conn.close()
 
 def obtener_movimientos_dia(fecha: str) -> List[Dict[str, Any]]:
-    """Obtiene movimientos de un día."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -140,12 +123,7 @@ def obtener_movimientos_dia(fecha: str) -> List[Dict[str, Any]]:
         cur.close()
         conn.close()
 
-# ==========================================
-# 🔒 CIERRES DE INVENTARIO
-# ==========================================
-
 def obtener_cierre_anterior(producto_id: str, fecha_actual: str) -> Optional[Dict[str, Any]]:
-    """Obtiene el último cierre registrado para un producto."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -164,11 +142,9 @@ def obtener_cierre_anterior(producto_id: str, fecha_actual: str) -> Optional[Dic
         conn.close()
 
 def cerrar_inventario_dia(fecha: str, productos_con_datos: List[Dict[str, Any]], creado_por: str = "admin") -> tuple:
-    """Guarda un snapshot del inventario."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # Verificar si ya existe cierre
         cur.execute("SELECT COUNT(*) FROM cierres_inventario WHERE fecha = %s", (fecha,))
         count = cur.fetchone()[0]
         if count > 0:
@@ -195,7 +171,6 @@ def cerrar_inventario_dia(fecha: str, productos_con_datos: List[Dict[str, Any]],
         conn.close()
 
 def obtener_cierre_por_fecha(fecha: str) -> List[Dict[str, Any]]:
-    """Obtiene todos los productos cerrados en una fecha."""
     conn = get_conn()
     cur = conn.cursor()
     try:
