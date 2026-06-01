@@ -343,24 +343,22 @@
         async function cerrarInventario() {
             const fecha = document.getElementById('cierre-date').value;
             if (!fecha) return alert('Selecciona una fecha');
-            
             if (!confirm('¿Cerrar inventario del día ' + fecha + '?')) return;
 
             try {
-                // Intentar cerrar
                 const result = await apiCall(`/api/cierre?fecha=${fecha}`, 'POST');
-                
-                // Si funciona (200 OK), mostrar mensaje de éxito
-                alert(result.msg || '✅ Inventario cerrado correctamente.');
+                alert('✅ ' + result.msg);
                 loadInventory();
-                
             } catch (error) {
-                // Si falla (400 Bad Request), mostrar mensaje del servidor
-                // 'error.detail' contiene el texto "⚠️ YA CERRADO..."
-                let mensaje = error.detail || error.message || 'Error al conectar';
+                // FastAPI devuelve el error en error.message
+                let msg = error.message || error.detail || 'Error al conectar';
                 
-                // Reemplazamos \n por saltos de línea reales para que se vea bonito
-                alert(mensaje.replace(/\\n/g, '\n'));
+                // Si detecta que ya estaba cerrado, muestra TU mensaje exacto
+                if (msg.includes('YA CERRADO') || msg.includes('ya se cerró')) {
+                    alert('⚠️ Ya se hizo el cierre.\nEspere al día siguiente para continuar.');
+                } else {
+                    alert('❌ ' + msg);
+                }
             }
         }
     </script>
