@@ -189,20 +189,14 @@ def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict 
         productos_con_cierre = []
         
         for prod in productos:
-            # 1. Obtener cierre anterior
             cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
             
-            if cierre_ant:
-                inv_ini = cierre_ant['inv_final']
-            else:
-                inv_ini = prod['stock']
+            # ✅ CONVERSIÓN A FLOAT
+            inv_ini = float(cierre_ant['inv_final']) if cierre_ant and cierre_ant.get('inv_final') is not None else float(prod['stock'])
+            entra = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'))
+            ventas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'))
+            bajas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja'))
             
-            # 2. Calcular movimientos del día
-            entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
-            ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
-            bajas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja')
-            
-            # 3. Calcular INV FINAL (resta ventas Y bajas)
             inv_final = inv_ini + entra - ventas - bajas
             
             productos_con_cierre.append({
@@ -210,7 +204,7 @@ def cerrar_inventario_api(request: Request, fecha: str = Query(...), user: dict 
                 'inv_ini': inv_ini,
                 'entra': entra,
                 'ventas': ventas,
-                'bajas': bajas,  # ✅ Ahora sí incluye las bajas
+                'bajas': bajas,
                 'inv_final': inv_final,
                 'observaciones': ''
             })
@@ -321,15 +315,14 @@ def calcular_inventario(productos: List[dict], movimientos: List[dict], fecha: s
         
         cat = CATEGORIA_MAP.get(prod['nombre'], "BEBIDAS")
         cierre_ant = obtener_cierre_anterior(prod['id'], fecha)
-        inv_ini = cierre_ant['inv_final'] if cierre_ant else 0
         
-        # ✅ Calcular entradas, ventas y BAJAS por separado
-        entra = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada')
-        ventas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida')
-        bajas = sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja')
+        # ✅ CONVERSIÓN EXPLÍCITA A FLOAT PARA EVITAR CHOQUE CON DECIMAL
+        inv_ini = float(cierre_ant['inv_final']) if cierre_ant and cierre_ant.get('inv_final') is not None else 0.0
+        entra = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'entrada'))
+        ventas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'salida'))
+        bajas = float(sum(m['cantidad'] for m in movimientos if m['producto_id'] == prod['id'] and m['tipo'] == 'baja'))
         
         total = inv_ini + entra
-        # ✅ El final descuenta tanto ventas como bajas
         inv_final = total - ventas - bajas
         
         cats[cat].append({
