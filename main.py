@@ -674,7 +674,7 @@ def reporte_movimientos(fecha: str = Query(...), user: dict = Depends(check_url_
     
     resumen_data = [
         ['Total Entradas:', f"+{total_entradas}", 'Total Ventas:', f"-{total_salidas}", 'Total Bajas:', f"-{total_bajas}"],
-        [' Ingresos', ' Salidas', '⚠️ Mermas']
+        
     ]
     tabla_resumen = Table(resumen_data, colWidths=[1.5*inch, 1*inch, 1.5*inch, 1*inch, 1.5*inch, 1*inch])
     tabla_resumen.setStyle(TableStyle([
