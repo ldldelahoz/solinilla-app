@@ -578,3 +578,116 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": f"Error interno: {str(exc)}"}
     )
+
+@app.get("/api/reporte/movimientos")
+def reporte_movimientos(fecha: str = Query(...), user: dict = Depends(check_url_token)):
+    """Genera PDF con el detalle hora por hora de todos los movimientos del día."""
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    try:
+        # Consultar movimientos unidos con nombres de productos
+        cur.execute("""
+            SELECT m.fecha, p.nombre, m.tipo, m.cantidad, m.motivo 
+            FROM movimientos m 
+            JOIN productos p ON m.producto_id = p.id 
+            WHERE DATE(m.fecha) = DATE(%s) 
+            ORDER BY m.fecha ASC
+        """, (fecha,))
+        rows = cur.fetchall()
+        
+        # Calcular totales para el resumen
+        total_entradas = sum(r[3] for r in rows if r[2] == 'entrada')
+        total_salidas = sum(r[3] for r in rows if r[2] == 'salida')
+        total_bajas = sum(r[3] for r in rows if r[2] == 'baja')
+        
+    finally:
+        cur.close()
+        conn.close()
+
+    # Generación del PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    elements = []
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(name='Title', fontSize=16, alignment=1, spaceAfter=5, fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'))
+    date_style = ParagraphStyle(name='Date', fontSize=11, alignment=1, spaceAfter=20, textColor=colors.HexColor('#666666'))
+    
+    elements.append(Paragraph("REPORTE DIARIO DE MOVIMIENTOS", title_style))
+    elements.append(Paragraph(f"Fecha de Auditoría: {fecha}", date_style))
+
+    # Cabecera de la tabla
+    data = [['HORA', 'PRODUCTO', 'TIPO', 'CANT', 'MOTIVO / OBSERVACIÓN']]
+    
+    for row in rows:
+        db_time, prod_name, tipo, cantidad, motivo = row
+        # Formatear hora (quita los segundos si quieres, o déjalos)
+        time_str = db_time.strftime("%H:%M") if hasattr(db_time, 'strftime') else str(db_time)[:5]
+        
+        data.append([
+            time_str, 
+            prod_name, 
+            tipo.upper(), 
+            str(cantidad), 
+            motivo if motivo else '-'
+        ])
+
+    # Crear tabla
+    col_widths = [0.8*inch, 2.2*inch, 0.8*inch, 0.5*inch, 2.7*inch]
+    table = Table(data, colWidths=col_widths)
+    
+    # Estilos de la tabla
+    table_style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')), # Cabecera oscura
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+    ])
+
+    # Colorear filas según tipo
+    for i in range(1, len(data)):
+        tipo_cell = data[i][2]
+        if tipo_cell == 'ENTRADA':
+            table_style.add('BACKGROUNDCOLOR', (0, i), (-1, i), colors.HexColor('#d4edda')) # Verde claro
+            table_style.add('TEXTCOLOR', (2, i), (2, i), colors.green)
+        elif tipo_cell == 'SALIDA':
+            table_style.add('BACKGROUNDCOLOR', (0, i), (-1, i), colors.HexColor('#f8d7da')) # Rojo claro
+            table_style.add('TEXTCOLOR', (2, i), (2, i), colors.red)
+        elif tipo_cell == 'BAJA':
+            table_style.add('BACKGROUNDCOLOR', (0, i), (-1, i), colors.HexColor('#fff3cd')) # Amarillo claro
+            table_style.add('TEXTCOLOR', (2, i), (2, i), colors.orange)
+
+    table.setStyle(table_style)
+    elements.append(table)
+    
+    # Resumen final
+    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Paragraph("RESUMEN DEL DÍA", ParagraphStyle('SubTitle', fontSize=11, fontName='Helvetica-Bold', alignment=1)))
+    
+    resumen_data = [
+        ['Total Entradas:', f"+{total_entradas}", 'Total Ventas:', f"-{total_salidas}", 'Total Bajas:', f"-{total_bajas}"],
+        [' Ingresos', ' Salidas', '⚠️ Mermas']
+    ]
+    tabla_resumen = Table(resumen_data, colWidths=[1.5*inch, 1*inch, 1.5*inch, 1*inch, 1.5*inch, 1*inch])
+    tabla_resumen.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eeeeee')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+    ]))
+    elements.append(tabla_resumen)
+
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return StreamingResponse(buffer, media_type="application/pdf", 
+                            headers={"Content-Disposition": f"inline; filename=movimientos_{fecha}.pdf"})

@@ -139,6 +139,16 @@
             <p style="font-size: 0.9rem; margin-bottom: 10px;">Guarda el estado actual como cierre del día.</p>
             <input type="date" id="cierre-date">
             <button class="btn btn-danger" onclick="cerrarInventario()">🔒 CERRAR DÍA</button>
+            
+        </div>
+        <div class="card" style="border: 2px solid var(--info); background: #f0f8ff;">
+            <h3 style="color: var(--info);">📋 Reporte de Movimientos</h3>
+            <p style="font-size: 0.9rem; margin-bottom: 10px; color: #555;">
+                Detalle hora por hora para auditoría y revisión de errores.
+            </p>
+            <label>Fecha a revisar:</label>
+            <input type="date" id="mov-report-date">
+            <button class="btn btn-primary" onclick="downloadMovReport()">📄 Descargar Reporte</button>
         </div>
     </div>
 
@@ -369,6 +379,14 @@
                     alert("❌ " + msg);
                 }
             }
+        }
+        async function downloadMovReport() {
+            const fecha = document.getElementById('mov-report-date').value;
+            if (!fecha) return alert('Selecciona una fecha');
+            
+            // Abre el PDF en una nueva pestaña
+            const url = `${API_BASE}/api/reporte/movimientos?fecha=${fecha}&token=${encodeURIComponent(token)}`;
+            window.open(url, '_blank');
         }
     </script>
 </body>
